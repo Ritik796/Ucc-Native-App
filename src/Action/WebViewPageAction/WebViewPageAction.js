@@ -1,38 +1,63 @@
 import { PermissionsAndroid, Platform } from "react-native";
 import Geolocation from "@react-native-community/geolocation";
 import DeviceInfo from "react-native-device-info";
-
+ 
 export const requestLocationPermission = async () => {
-    if (Platform.OS !== "android") return true;
-    let isPermission = true;
     try {
-        const granted = await PermissionsAndroid.requestMultiple(
-            [PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
-            PermissionsAndroid.PERMISSIONS.ACCESS_COARSE_LOCATION
-            ]
-        );
-
+        if (Platform.OS !== "android") return true; // iOS handled differently
+ 
+        let isPermission = true;
+        const granted = await PermissionsAndroid.requestMultiple([
+            PermissionsAndroid.PERMISSIONS.CAMERA,
+            PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+            PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE,
+            PermissionsAndroid.PERMISSIONS.READ_MEDIA_IMAGES,
+            PermissionsAndroid.PERMISSIONS.ACCESS_MEDIA_LOCATION,
+        ]);
+ 
+        if (
+            granted[PermissionsAndroid.PERMISSIONS.CAMERA] !==
+            PermissionsAndroid.RESULTS.GRANTED
+        ) {
+            console.log("Camera permission denied");
+            isPermission = false;
+        }
+ 
         if (
             granted[PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION] !==
             PermissionsAndroid.RESULTS.GRANTED
         ) {
-            console.log("ACCESS_FINE_LOCATION permission denied");
+            console.log("Location permission denied");
             isPermission = false;
         }
-
         if (
-            granted[PermissionsAndroid.PERMISSIONS.ACCESS_COARSE_LOCATION] !==
+            granted[PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE] !==
             PermissionsAndroid.RESULTS.GRANTED
         ) {
-            console.log("ACCESS_COARSE_LOCATION permission denied");
+            console.log("READ_EXTERNAL_STORAGE permission denied");
             isPermission = false;
         }
+        if (
+            granted[PermissionsAndroid.PERMISSIONS.READ_MEDIA_IMAGES] !==
+            PermissionsAndroid.RESULTS.GRANTED
+        ) {
+            console.log("READ_MEDIA_IMAGES permission denied");
+            isPermission = false;
+        }
+        if (
+            granted[PermissionsAndroid.PERMISSIONS.ACCESS_MEDIA_LOCATION] !==
+            PermissionsAndroid.RESULTS.GRANTED
+        ) {
+            console.log("ACCESS_MEDIA_LOCATION permission denied");
+            isPermission = false;
+        }
+ 
         return isPermission;
     } catch (err) {
-        console.warn('Permission request error:', err);
+        console.warn("Permission error:", err);
         return false;
     }
-
+ 
 };
 export const startLocationTracking = async (locationRef, webViewRef) => {
     try {
@@ -41,7 +66,7 @@ export const startLocationTracking = async (locationRef, webViewRef) => {
             (position) => {
                 const { latitude, longitude, accuracy } = position.coords;
                 console.log("watchPosition callback:", latitude, longitude, accuracy);
-
+ 
                 if (accuracy != null && accuracy <= 15) {
                     webViewRef?.current?.postMessage(JSON.stringify({ status: "success", data: { lat: latitude, lng: longitude } }));
                 } else {
@@ -59,7 +84,7 @@ export const startLocationTracking = async (locationRef, webViewRef) => {
                 useSignificantChanges: false,
                 maximumAge: 0
             }
-
+ 
         );
         locationRef.current = watchId;
     } catch (error) {
@@ -70,19 +95,19 @@ export const startLocationTracking = async (locationRef, webViewRef) => {
         }
     }
 };
-
+ 
 export const stopLocationTracking = (locationRef, setWebData) => {
     if (locationRef?.current) {
         console.log("Location tracking stopped.", locationRef.current);
         Geolocation.clearWatch(locationRef.current);
         locationRef.current = null;
-
+ 
         if (setWebData) {
             setWebData((prev) => ({ ...prev, userId: "", city: "" }));
         }
     }
 };
-
+ 
 export const stopTracking = async (locationRef) => {
     if (locationRef?.current) {
         console.log("Location tracking stopped.", locationRef.current);
@@ -90,7 +115,7 @@ export const stopTracking = async (locationRef) => {
         locationRef.current = null;
     }
 };
-
+ 
 export const readWebViewMessage = async(event, webViewRef, locationRef,isCameraActive,setShowCamera,setIsVisible) => {
     let data = event?.nativeEvent?.data;
     try {
@@ -112,7 +137,7 @@ export const readWebViewMessage = async(event, webViewRef, locationRef,isCameraA
                 }
                 break;
             case 'location':
-
+ 
                 break;
             default:
                 break;
@@ -121,3 +146,4 @@ export const readWebViewMessage = async(event, webViewRef, locationRef,isCameraA
         return;
     }
 };
+ 
