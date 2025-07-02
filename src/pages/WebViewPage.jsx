@@ -10,18 +10,25 @@ import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 
 import LoadingScreen from "./LoadingScreen";
 import * as action from "../Action/WebViewPageAction/WebViewPageAction";
+import CameraComponent from "../components/Camera/Camera";
 
 const WebViewPage = () => {
   const appState = useRef(AppState.currentState);
   const [loading, setLoading] = useState(true);
   const [webKey, setWebKey] = useState(0);
+  const [isVisible, setIsVisible] = useState(false);
+  const [showCamera, setShowCamera] = useState(false);
+  const [base64Image, setBase64Image] = useState("");
+  const [loader, setLoader] = useState(false);
   const webViewRef = useRef(null);
   const locationRef = useRef(null);
+  const isCameraActive = useRef(null);
 
   useEffect(() => {
     action.requestLocationPermission();
     const subscription = AppState.addEventListener("change", handleAppStateChange);
     return () => subscription.remove();
+    // eslint-disable-next-line
   }, []);
 
 
@@ -39,16 +46,23 @@ const WebViewPage = () => {
 
   const handleAppStateChange = async (nextAppState) => {
     console.log("AppState changed:", nextAppState);
+    isCameraActive.current = false;
 
     if (appState.current.match(/inactive|background/) || nextAppState === "active") {
-      console.log("App returned to foreground — reloading WebView");
-      setLoading(true); // Mark as loading
-      setWebKey((prevKey) => prevKey + 1); // Delay ensures loading gets shown
+      if (isCameraActive.current) {
+        console.log("Back from camera, skipping reload.");
+        isCameraActive.current = false;
+      }
+      else {
+        console.log("App returned to foreground — reloading WebView");
+        setLoading(true); // Mark as loading
+        setWebKey((prevKey) => prevKey + 1); // Delay ensures loading gets shown
+      }
     }
 
     if (nextAppState.match(/inactive|background/)) {
       console.log("App moved to background/inactive. Stopping location tracking.", locationRef.current);
-      action.stopLocationTracking(locationRef);
+      action.stopTracking(locationRef);
     }
 
     appState.current = nextAppState;
@@ -59,17 +73,28 @@ const WebViewPage = () => {
   };
 
   const handleMessage = (event) => {
-    action.readWebViewMessage(event, webViewRef, locationRef);
+    action.readWebViewMessage(event, webViewRef, locationRef,isCameraActive,setShowCamera,setIsVisible);
   };
-
-
 
 
   return (
     <SafeAreaProvider>
       <SafeAreaView style={styles.safeContainer}>
         {loading && <LoadingScreen />}
-
+        {showCamera && (
+          <CameraComponent
+            loader={loader}
+            setLoader={setLoader}
+            isCameraActive={isCameraActive}
+            isVisible={isVisible}
+            setIsVisible={setIsVisible}
+            setBase64Image={setBase64Image}
+            setShowCamera={setShowCamera}
+            webViewRef={webViewRef}
+            base64Image={base64Image}
+            locationRef={locationRef}
+          />
+        )}
         {/* ✅ Improved KeyboardAvoidingView */}
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : undefined}
@@ -81,7 +106,7 @@ const WebViewPage = () => {
             key={webKey}
             ref={webViewRef}
             onMessage={handleMessage}
-            source={{ uri: "https://ucc-payment-app.web.app" }}
+            source={{ uri: "http://192.168.29.181:3001" }}
             style={{ flex: 1, minHeight: "100%" }} // ✅ Ensure full height
             geolocationEnabled={true}
             mediaPlaybackRequiresUserAction={false}

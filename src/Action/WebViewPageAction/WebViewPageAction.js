@@ -43,7 +43,7 @@ export const startLocationTracking = async (locationRef, webViewRef) => {
                 console.log("watchPosition callback:", latitude, longitude, accuracy);
 
                 if (accuracy != null && accuracy <= 15) {
-                webViewRef?.current?.postMessage(JSON.stringify({ status: "success", data: { lat: latitude, lng: longitude } }));
+                    webViewRef?.current?.postMessage(JSON.stringify({ status: "success", data: { lat: latitude, lng: longitude } }));
                 } else {
                     console.log("Skipped low-accuracy position:", accuracy);
                 }
@@ -71,15 +71,27 @@ export const startLocationTracking = async (locationRef, webViewRef) => {
     }
 };
 
-export const stopLocationTracking = (locationRef) => {
-  if (locationRef?.current) {
-    console.log("Location tracking stopped.", locationRef.current);
-    Geolocation.clearWatch(locationRef.current);
-    locationRef.current = null;
-  }
+export const stopLocationTracking = (locationRef, setWebData) => {
+    if (locationRef?.current) {
+        console.log("Location tracking stopped.", locationRef.current);
+        Geolocation.clearWatch(locationRef.current);
+        locationRef.current = null;
+
+        if (setWebData) {
+            setWebData((prev) => ({ ...prev, userId: "", city: "" }));
+        }
+    }
 };
 
-export const readWebViewMessage = (event, webViewRef, locationRef) => {
+export const stopTracking = async (locationRef) => {
+    if (locationRef?.current) {
+        console.log("Location tracking stopped.", locationRef.current);
+        await Geolocation.clearWatch(locationRef.current);
+        locationRef.current = null;
+    }
+};
+
+export const readWebViewMessage = async(event, webViewRef, locationRef,isCameraActive,setShowCamera,setIsVisible) => {
     let data = event?.nativeEvent?.data;
     try {
         let msg = JSON.parse(data);
@@ -88,12 +100,19 @@ export const readWebViewMessage = (event, webViewRef, locationRef) => {
             case 'startLocationTracking':
                 startLocationTracking(locationRef, webViewRef);
                 break;
-            case 'message':
-                console.log(msg.data, msg.status);
+            case 'openCamera':
+                const isLocationEnabled = await DeviceInfo.isLocationEnabled();
+                if (isLocationEnabled) {
+                    isCameraActive.current = true;
+                    setShowCamera(true);
+                    setIsVisible(true);
+                } else {
+                    webViewRef.current?.postMessage(JSON.stringify({ type: "Location_Disabled" }));
+                    isCameraActive.current = false;
+                }
                 break;
             case 'location':
-                console.log('msg.lat', msg.lat);
-                console.log('msg.lng', msg.lng);
+
                 break;
             default:
                 break;
