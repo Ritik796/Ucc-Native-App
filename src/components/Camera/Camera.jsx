@@ -43,7 +43,7 @@ const CameraComponent = ({
 
     return async () => {
       console.log('Cleanup: resuming location tracking');
-      await webAction.stopTracking(locationRef);
+      await webAction.startLocationTracking(locationRef,webViewRef);
       setCameraOpen(false);
     };
   }, [isVisible]);
@@ -90,7 +90,7 @@ const CameraComponent = ({
     const now = Date.now();
     if (base64Image && now - lastSent.current > 3000) {
       lastSent.current = now;
-      const messageData = { image: base64Image };
+      const messageData = { type:"image",image: base64Image };
       webViewRef.current?.postMessage(JSON.stringify(messageData));
     }
     // Clean up local files if cameraData exists

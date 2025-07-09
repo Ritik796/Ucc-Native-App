@@ -61,20 +61,20 @@ export const requestLocationPermission = async () => {
 };
 export const startLocationTracking = async (locationRef, webViewRef) => {
     try {
-        console.log('StartLocationTracking')
+        // console.log('StartLocationTracking')
         const watchId = Geolocation.watchPosition(
             (position) => {
                 const { latitude, longitude, accuracy } = position.coords;
                 console.log("watchPosition callback:", latitude, longitude, accuracy);
 
                 if (accuracy != null && accuracy <= 15) {
-                    webViewRef?.current?.postMessage(JSON.stringify({ status: "success", data: { lat: latitude, lng: longitude } }));
+                    webViewRef?.current?.postMessage(JSON.stringify({ type:"Location",status: "success", data: { lat: latitude, lng: longitude } }));
                 } else {
                     console.log("Skipped low-accuracy position:", accuracy);
                 }
             },
             (error) => {
-                webViewRef?.current?.postMessage(JSON.stringify({ status: "fail", data: null }));
+                webViewRef?.current?.postMessage(JSON.stringify({type:"Location", status: "fail", data: null }));
             },
             {
                 enableHighAccuracy: true,
@@ -89,7 +89,7 @@ export const startLocationTracking = async (locationRef, webViewRef) => {
         locationRef.current = watchId;
     } catch (error) {
         if (locationRef.current != null) {
-            console.log("Clearing watchPosition with id:", locationRef.current);
+            // console.log("Clearing watchPosition with id:", locationRef.current);
             Geolocation.clearWatch(locationRef.current);
             locationRef.current = null;
         }
@@ -98,7 +98,7 @@ export const startLocationTracking = async (locationRef, webViewRef) => {
 
 export const stopLocationTracking = (locationRef, setWebData) => {
     if (locationRef?.current) {
-        console.log("Location tracking stopped.", locationRef.current);
+        // console.log("Location tracking stopped.", locationRef.current);
         Geolocation.clearWatch(locationRef.current);
         locationRef.current = null;
 
@@ -120,7 +120,6 @@ export const readWebViewMessage = async (event, webViewRef, locationRef, isCamer
     let data = event?.nativeEvent?.data;
     try {
         let msg = JSON.parse(data);
-        console.log('msg', msg);
         switch (msg?.type) {
             case 'startLocationTracking':
                 startLocationTracking(locationRef, webViewRef);
@@ -136,14 +135,14 @@ export const readWebViewMessage = async (event, webViewRef, locationRef, isCamer
                     isCameraActive.current = false;
                 }
                 break;
-            case 'location':
-
-                break;
             case 'print-receipt':
                 setBluetoothEvent(msg);
                 break;
             case 'connect-bt':
                 setBtConnectionRequest(msg);
+                break;
+            case 'message':
+                console.log(msg.type,msg.data)
                 break;
             default:
                 break;

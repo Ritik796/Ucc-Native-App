@@ -65,8 +65,8 @@ const WebViewPage = () => {
           console.log('Wait,Bluetooth module is working..');
         } else {
           console.log('App returned to foreground — reloading WebView');
-          // setLoading(true); // Mark as loading
-          // setWebKey(prevKey => prevKey + 1); // Delay ensures loading gets shown
+          setLoading(true); // Mark as loading
+          setWebKey(prevKey => prevKey + 1); // Delay ensures loading gets shown
           reconnectBt();
         }
       }
@@ -130,7 +130,7 @@ const WebViewPage = () => {
             key={webKey}
             ref={webViewRef}
             onMessage={handleMessage}
-            source={{uri: 'https://ucc-payment-app.web.app/'}}
+            source={{uri: 'http://192.168.29.181:3000'}}
             style={{flex: 1, minHeight: '100%'}} // ✅ Ensure full height
             geolocationEnabled={true}
             mediaPlaybackRequiresUserAction={false}
