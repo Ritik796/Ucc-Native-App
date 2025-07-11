@@ -1,7 +1,5 @@
 import Geolocation from "@react-native-community/geolocation";
 import * as db from '../Services/dbService'
-import BackgroundTimer from 'react-native-background-timer';
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { getCurrentDatabase } from "../Firebase";
 let successStatus = 'success';
 let failStatus = 'fail';
@@ -136,7 +134,6 @@ export const saveLocationHistory = async (traversalHistory, minuteDistance, curr
         if (!traversalHistory || traversalHistory.length === 0 || !userId || !dbPath ) {
             return failStatus;
         }
-        console.log(traversalHistory, minuteDistance, currentTime, userId, dbPath)
         let database = await getCurrentDatabase(dbPath)
         const now = new Date();
         const year = now.getFullYear();
@@ -144,7 +141,6 @@ export const saveLocationHistory = async (traversalHistory, minuteDistance, curr
         const todayDate = now.toISOString().split("T")[0];
 
         const path = `PaymentCollectionInfo/PaymentCollectorLocationHistory/${userId}/${year}/${month}/${todayDate}`;
-        console.log('path',path)
 
         // Fetch and calculate distances in parallel
         let coveredDistance = await db.getData(`${path}/TotalCoveredDistance`, database)
@@ -173,62 +169,3 @@ export const saveLocationHistory = async (traversalHistory, minuteDistance, curr
 };
 
 
-/*
-    Function name : saveTraversalHistory();
-    Description  : This function is working for save location history of payment collector
-    Written By : Ritik Parmar
-    Writeen date : 10 Jul 2025
- */
-export const saveTraversalHistory = async (userId, dbPath) => {
-    if (!userId || !dbPath) {
-        Alert.alert('Location Error', 'Unable to get your location');
-        return;
-    }
-
-    traversalHistory = [];
-    previousLat = null;
-    previousLng = null;
-    maxDistanceCanCover = maxDistance;
-
-    // Runs every 5 seconds
-    const locationIntervalId = BackgroundTimer.setInterval(() => {
-        Geolocation.getCurrentPosition(
-            (pos) => {
-                const { latitude, longitude } = pos.coords;
-
-                if (previousLat !== null && previousLng !== null) {
-                    const pathDis = getDistance(previousLat, previousLng, latitude, longitude);
-                    if (pathDis > 0 && pathDis < maxDistanceCanCover) {
-                        traversalHistory.push({ lat: latitude, lng: longitude });
-                    } else if (pathDis !== 0) {
-                        maxDistanceCanCover += maxDistance;
-                    }
-                } else {
-                    traversalHistory.push({ lat: latitude, lng: longitude });
-                }
-
-                previousLat = latitude;
-                previousLng = longitude;
-            },
-            (err) => {
-                console.error('Location error:', err);
-            },
-            { enableHighAccuracy: true, timeout: 10000, maximumAge: 1000 }
-        );
-    }, 5000); // every 5 seconds
-
-    // Runs every 60 seconds to save history
-    const saveIntervalId = BackgroundTimer.setInterval(async () => {
-        if (traversalHistory.length > 0) {
-            await saveLocationHistory(traversalHistory, userId, dbPath);
-            traversalHistory = [];
-            maxDistanceCanCover = maxDistance;
-        }
-    }, 60000); // every 60 seconds
-
-    // Return stop function
-    return () => {
-        BackgroundTimer.clearInterval(locationIntervalId);
-        BackgroundTimer.clearInterval(saveIntervalId);
-    };
-};

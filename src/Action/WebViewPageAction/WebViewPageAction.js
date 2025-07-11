@@ -1,7 +1,6 @@
-import { Alert, PermissionsAndroid, Platform } from "react-native";
+import {  PermissionsAndroid, Platform } from "react-native";
 import Geolocation from "@react-native-community/geolocation";
 import DeviceInfo from "react-native-device-info";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as locationService from '../../Services/LocationServices'
 
 
@@ -163,8 +162,6 @@ export const readWebViewMessage = async (event, webViewRef, locationRef, isCamer
                 break;
 
             case 'StartBackGroundService':
-                await AsyncStorage.setItem('userId', msg?.data?.userId || "")
-                await AsyncStorage.setItem('dbPath', msg?.data?.dbPath || "")
                 setWebData(pre => ({ ...pre, userId: msg?.data?.userId || "", dbPath: msg?.data?.dbPath || "" }))
                 StartBackgroundTask(msg.data.userId, msg.data.dbPath, BackgroundTaskModule)
                 break;
@@ -192,6 +189,5 @@ const StopBackGroundTask = (BackgroundTaskModule) => {
 }
 export const startSavingTraversalHistory = async (history) => {
     let data = JSON.parse(history);
-    console.log(data)
     locationService.saveLocationHistory(data.path, data.distance, data.time, data.userId, data.dbPath);
 }
