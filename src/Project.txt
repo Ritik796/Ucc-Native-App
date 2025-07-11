@@ -1,2 +1,2 @@
-Production Url : https://entity-marking.web.app/;
-Test Url Ritik : https://interview-8f792.web.app/;
+Test url for team : https://ucc-payment-app.web.app;
+Test Url Ritik :  https://fir-project-d59e1.web.app;

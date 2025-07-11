@@ -1,18 +1,23 @@
-import React, {useEffect, useRef, useState} from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import WebView from 'react-native-webview';
 import {
   StyleSheet,
   AppState,
   KeyboardAvoidingView,
   Platform,
+  NativeModules,
+  NativeEventEmitter,
+  DeviceEventEmitter
+
 } from 'react-native';
-import {SafeAreaProvider, SafeAreaView} from 'react-native-safe-area-context';
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
 import LoadingScreen from './LoadingScreen';
 import * as action from '../Action/WebViewPageAction/WebViewPageAction';
 import CameraComponent from '../components/Camera/Camera';
 import BluetoothModule from '../components/Bluetooth/BluetoothModule';
-import {reconnectBt} from '../Action/Bluetooth/bluetoothModuleAction';
+import { reconnectBt } from '../Action/Bluetooth/bluetoothModuleAction';
+import { getCurrentPosition, getDistance } from '../Services/LocationServices';
 
 const WebViewPage = () => {
   const appState = useRef(AppState.currentState);
@@ -22,12 +27,22 @@ const WebViewPage = () => {
   const [showCamera, setShowCamera] = useState(false);
   const [base64Image, setBase64Image] = useState('');
   const [loader, setLoader] = useState(false);
+  const [webData, setWebData] = useState({ userId: "", dbPath: "" })
   const webViewRef = useRef(null);
   const locationRef = useRef(null);
   const isCameraActive = useRef(null);
+  const { BackgroundTaskModule } = NativeModules
   // Bluetooth States
   const [bluetoothEvent, setBluetoothEvent] = useState(null);
   const [btConnectionRequest, setBtConnectionRequest] = useState(null);
+  useEffect(() => {
+    const subscription = DeviceEventEmitter.addListener('onTraversalUpdate', history => {
+      // console.log('📍 Received Travel History via Native Module:', history);
+      handleSaveLocatinHistory(history);
+    });
+
+    return () => subscription.remove();
+  }, []);
 
   useEffect(() => {
     action.requestLocationPermission();
@@ -36,6 +51,7 @@ const WebViewPage = () => {
       handleAppStateChange,
     );
     return () => subscription.remove();
+
     // eslint-disable-next-line
   }, []);
 
@@ -84,7 +100,9 @@ const WebViewPage = () => {
       console.log(error);
     }
   };
-
+  const handleSaveLocatinHistory = (history) => {
+    action.startSavingTraversalHistory(history,webData.userId,webData.dbPath)
+  }
   const handleStopLoading = () => {
     setTimeout(() => setLoading(false), 1000);
   };
@@ -99,6 +117,8 @@ const WebViewPage = () => {
       setIsVisible,
       setBluetoothEvent,
       setBtConnectionRequest,
+      setWebData,
+      BackgroundTaskModule
     );
   };
 
@@ -123,15 +143,15 @@ const WebViewPage = () => {
         {/* ✅ Improved KeyboardAvoidingView */}
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          style={{flex: 1}}
+          style={{ flex: 1 }}
           enabled
           keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}>
           <WebView
             key={webKey}
             ref={webViewRef}
             onMessage={handleMessage}
-            source={{uri: 'http://192.168.29.181:3000'}}
-            style={{flex: 1, minHeight: '100%'}} // ✅ Ensure full height
+            source={{ uri: 'https://fir-project-d59e1.web.app' }}
+            style={{ flex: 1, minHeight: '100%' }} // ✅ Ensure full height
             geolocationEnabled={true}
             mediaPlaybackRequiresUserAction={false}
             javaScriptEnabled={true}

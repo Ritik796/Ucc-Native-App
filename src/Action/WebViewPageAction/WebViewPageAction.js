@@ -1,6 +1,9 @@
-import { PermissionsAndroid, Platform } from "react-native";
+import { Alert, PermissionsAndroid, Platform } from "react-native";
 import Geolocation from "@react-native-community/geolocation";
 import DeviceInfo from "react-native-device-info";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as locationService from '../../Services/LocationServices'
+
 
 export const requestLocationPermission = async () => {
     try {
@@ -13,6 +16,8 @@ export const requestLocationPermission = async () => {
             PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE,
             PermissionsAndroid.PERMISSIONS.READ_MEDIA_IMAGES,
             PermissionsAndroid.PERMISSIONS.ACCESS_MEDIA_LOCATION,
+            PermissionsAndroid.PERMISSIONS.ACCESS_BACKGROUND_LOCATION,
+            PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS
         ]);
 
         if (
@@ -51,6 +56,20 @@ export const requestLocationPermission = async () => {
             console.log("ACCESS_MEDIA_LOCATION permission denied");
             isPermission = false;
         }
+        if (
+            granted[PermissionsAndroid.PERMISSIONS.ACCESS_BACKGROUND_LOCATION] !==
+            PermissionsAndroid.RESULTS.GRANTED
+        ) {
+            console.log("ACCESS_BACKGROUND_LOCATION permission denied");
+            isPermission = false;
+        }
+        if (
+            granted[PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS] !==
+            PermissionsAndroid.RESULTS.GRANTED
+        ) {
+            console.log("POST_NOTIFICATIONS permission denied");
+            isPermission = false;
+        }
 
         return isPermission;
     } catch (err) {
@@ -68,13 +87,13 @@ export const startLocationTracking = async (locationRef, webViewRef) => {
                 console.log("watchPosition callback:", latitude, longitude, accuracy);
 
                 if (accuracy != null && accuracy <= 15) {
-                    webViewRef?.current?.postMessage(JSON.stringify({ type:"Location",status: "success", data: { lat: latitude, lng: longitude } }));
+                    webViewRef?.current?.postMessage(JSON.stringify({ type: "Location", status: "success", data: { lat: latitude, lng: longitude } }));
                 } else {
                     console.log("Skipped low-accuracy position:", accuracy);
                 }
             },
             (error) => {
-                webViewRef?.current?.postMessage(JSON.stringify({type:"Location", status: "fail", data: null }));
+                webViewRef?.current?.postMessage(JSON.stringify({ type: "Location", status: "fail", data: null }));
             },
             {
                 enableHighAccuracy: true,
@@ -116,13 +135,14 @@ export const stopTracking = async (locationRef) => {
     }
 };
 
-export const readWebViewMessage = async (event, webViewRef, locationRef, isCameraActive, setShowCamera, setIsVisible, setBluetoothEvent, setBtConnectionRequest) => {
+export const readWebViewMessage = async (event, webViewRef, locationRef, isCameraActive, setShowCamera, setIsVisible, setBluetoothEvent, setBtConnectionRequest, setWebData, BackgroundTaskModule) => {
     let data = event?.nativeEvent?.data;
     try {
         let msg = JSON.parse(data);
         switch (msg?.type) {
             case 'startLocationTracking':
                 startLocationTracking(locationRef, webViewRef);
+
                 break;
             case 'openCamera':
                 const isLocationEnabled = await DeviceInfo.isLocationEnabled();
@@ -141,8 +161,18 @@ export const readWebViewMessage = async (event, webViewRef, locationRef, isCamer
             case 'connect-bt':
                 setBtConnectionRequest(msg);
                 break;
+
+            case 'StartBackGroundService':
+                await AsyncStorage.setItem('userId', msg?.data?.userId || "")
+                await AsyncStorage.setItem('dbPath', msg?.data?.dbPath || "")
+                setWebData(pre => ({ ...pre, userId: msg?.data?.userId || "", dbPath: msg?.data?.dbPath || "" }))
+                StartBackgroundTask(msg.data.userId, msg.data.dbPath, BackgroundTaskModule)
+                break;
+            case 'Logout':
+               StopBackGroundTask(BackgroundTaskModule);
+                break;
             case 'message':
-                console.log(msg.type,msg.data)
+                console.log(msg.type, msg.data)
                 break;
             default:
                 break;
@@ -151,3 +181,17 @@ export const readWebViewMessage = async (event, webViewRef, locationRef, isCamer
         return;
     }
 };
+const StartBackgroundTask = (userId, dbPath, BackgroundTaskModule) => {
+    BackgroundTaskModule.startBackgroundTask({
+        USER_ID: userId || "",
+        DB_PATH: dbPath || "",
+    });
+}
+const StopBackGroundTask = (BackgroundTaskModule) => {
+    BackgroundTaskModule.stopBackgroundTask();
+}
+export const startSavingTraversalHistory = async (history) => {
+    let data = JSON.parse(history);
+    console.log(data)
+    locationService.saveLocationHistory(data.path, data.distance, data.time, data.userId, data.dbPath);
+}
