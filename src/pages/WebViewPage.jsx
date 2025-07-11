@@ -6,7 +6,6 @@ import {
   KeyboardAvoidingView,
   Platform,
   NativeModules,
-  NativeEventEmitter,
   DeviceEventEmitter
 
 } from 'react-native';
@@ -17,7 +16,6 @@ import * as action from '../Action/WebViewPageAction/WebViewPageAction';
 import CameraComponent from '../components/Camera/Camera';
 import BluetoothModule from '../components/Bluetooth/BluetoothModule';
 import { reconnectBt } from '../Action/Bluetooth/bluetoothModuleAction';
-import { getCurrentPosition, getDistance } from '../Services/LocationServices';
 
 const WebViewPage = () => {
   const appState = useRef(AppState.currentState);
@@ -150,7 +148,7 @@ const WebViewPage = () => {
             key={webKey}
             ref={webViewRef}
             onMessage={handleMessage}
-            source={{ uri: 'https://fir-project-d59e1.web.app' }}
+            source={{ uri: 'https://ucc-payment-app.web.app' }}
             style={{ flex: 1, minHeight: '100%' }} // ✅ Ensure full height
             geolocationEnabled={true}
             mediaPlaybackRequiresUserAction={false}
