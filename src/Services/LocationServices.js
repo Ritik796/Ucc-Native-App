@@ -3,11 +3,7 @@ import * as db from '../Services/dbService'
 import { getCurrentDatabase } from "../Firebase";
 let successStatus = 'success';
 let failStatus = 'fail';
-let traversalHistory = [];
-let maxDistanceCanCover = 0; // Initial allowed max distance
-const maxDistance = 15;       // Used to increase tolerance if spike happens
-let previousLat = null;
-let previousLng = null;
+
 
 /*
     Function name : getCurrentPosition();
