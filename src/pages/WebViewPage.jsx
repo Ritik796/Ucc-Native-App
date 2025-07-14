@@ -33,14 +33,7 @@ const WebViewPage = () => {
   // Bluetooth States
   const [bluetoothEvent, setBluetoothEvent] = useState(null);
   const [btConnectionRequest, setBtConnectionRequest] = useState(null);
-  useEffect(() => {
-    const subscription = DeviceEventEmitter.addListener('onTraversalUpdate', history => {
-      // console.log('📍 Received Travel History via Native Module:', history);
-      handleSaveLocatinHistory(history);
-    });
-
-    return () => subscription.remove();
-  }, []);
+ 
 
   useEffect(() => {
     action.requestLocationPermission();
@@ -52,7 +45,14 @@ const WebViewPage = () => {
 
     // eslint-disable-next-line
   }, []);
+ useEffect(() => {
+    const subscription = DeviceEventEmitter.addListener('onTraversalUpdate', history => {
+      // console.log('📍 Received Travel History via Native Module:', history);
+      handleSaveLocatinHistory(history);
+    });
 
+    return () => subscription.remove();
+  }, []);
   // useEffect(() => {
   //   const backAction = () => {
   //     console.log("backAction");
@@ -148,7 +148,7 @@ const WebViewPage = () => {
             key={webKey}
             ref={webViewRef}
             onMessage={handleMessage}
-            source={{ uri: 'https://ucc-payment-app.web.app' }}
+            source={{ uri: 'https://fir-project-d59e1.web.app' }}
             style={{ flex: 1, minHeight: '100%' }} // ✅ Ensure full height
             geolocationEnabled={true}
             mediaPlaybackRequiresUserAction={false}

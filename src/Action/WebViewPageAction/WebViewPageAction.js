@@ -5,19 +5,23 @@ import * as locationService from '../../Services/LocationServices'
 
 
 export const requestLocationPermission = async () => {
+    console.log('run');
     try {
         if (Platform.OS !== "android") return true; // iOS handled differently
 
         let isPermission = true;
+
+        // Step 1: Request all permissions EXCEPT background location
         const granted = await PermissionsAndroid.requestMultiple([
             PermissionsAndroid.PERMISSIONS.CAMERA,
             PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
             PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE,
             PermissionsAndroid.PERMISSIONS.READ_MEDIA_IMAGES,
             PermissionsAndroid.PERMISSIONS.ACCESS_MEDIA_LOCATION,
-            PermissionsAndroid.PERMISSIONS.ACCESS_BACKGROUND_LOCATION,
             PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS
         ]);
+
+        console.log("Permission results:", granted);
 
         if (
             granted[PermissionsAndroid.PERMISSIONS.CAMERA] !==
@@ -56,17 +60,20 @@ export const requestLocationPermission = async () => {
             isPermission = false;
         }
         if (
-            granted[PermissionsAndroid.PERMISSIONS.ACCESS_BACKGROUND_LOCATION] !==
-            PermissionsAndroid.RESULTS.GRANTED
-        ) {
-            console.log("ACCESS_BACKGROUND_LOCATION permission denied");
-            isPermission = false;
-        }
-        if (
             granted[PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS] !==
             PermissionsAndroid.RESULTS.GRANTED
         ) {
             console.log("POST_NOTIFICATIONS permission denied");
+            isPermission = false;
+        }
+
+        // Step 2: Request background location permission separately
+        const bgGranted = await PermissionsAndroid.request(
+            PermissionsAndroid.PERMISSIONS.ACCESS_BACKGROUND_LOCATION
+        );
+
+        if (bgGranted !== PermissionsAndroid.RESULTS.GRANTED) {
+            console.log("ACCESS_BACKGROUND_LOCATION permission denied");
             isPermission = false;
         }
 
@@ -75,8 +82,8 @@ export const requestLocationPermission = async () => {
         console.warn("Permission error:", err);
         return false;
     }
-
 };
+
 export const startLocationTracking = async (locationRef, webViewRef) => {
     try {
         // console.log('StartLocationTracking')
