@@ -99,7 +99,7 @@ const WebViewPage = () => {
     }
   };
   const handleSaveLocatinHistory = (history) => {
-    action.startSavingTraversalHistory(history,webData.userId,webData.dbPath)
+    // action.startSavingTraversalHistory(history,webData.userId,webData.dbPath)
   }
   const handleStopLoading = () => {
     setTimeout(() => setLoading(false), 1000);
