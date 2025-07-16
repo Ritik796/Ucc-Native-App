@@ -2,11 +2,11 @@ import RNBluetoothClassic from 'react-native-bluetooth-classic';
 import { PermissionsAndroid, Platform } from "react-native";
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-export const handleBluetoothConnection = async (setError, webViewRef, setDeviceList, setIsDeviceConnected) => {
+export const handleBluetoothConnection = async (setError, webViewRef, setDeviceList, setIsDeviceConnected,isDeviceConnected) => {
     try {
         const bluetoothAccess = await requestBluetoothPermissions(setError);
         if (bluetoothAccess) {
-            setupBluetooth(setError, webViewRef, setDeviceList, setIsDeviceConnected);
+            setupBluetooth(setError, webViewRef, setDeviceList, setIsDeviceConnected,isDeviceConnected);
         }
     } catch (err) {
         console.warn('Permission request error:', err);
@@ -144,7 +144,7 @@ export const postBtWebMessages = async (webViewRef, type, data) => {
     webViewRef?.current?.postMessage(JSON.stringify({ type, data }));
 }
 export const printReceipt = async (device, printData, setBtEvent) => {
-    console.log('hey askdjkasdjasjdkasjdjkas')
+    // console.log('hey askdjkasdjasjdkasjdjkas')
     await AsyncStorage.setItem('lastConnectedDevice', JSON.stringify(device.address));
     await device.write(printData + '\n');
     // setBtEvent(null);

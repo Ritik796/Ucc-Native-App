@@ -141,7 +141,7 @@ export const stopTracking = async (locationRef) => {
     }
 };
 
-export const readWebViewMessage = async (event, webViewRef, locationRef, isCameraActive, setShowCamera, setIsVisible, setBluetoothEvent, setBtConnectionRequest, setWebData, BackgroundTaskModule) => {
+export const readWebViewMessage = async (event, webViewRef, locationRef, isCameraActive, setShowCamera, setIsVisible, setBluetoothEvent, setBtConnectionRequest, setWebData, BackgroundTaskModule,blutoothRef) => {
     let data = event?.nativeEvent?.data;
     try {
         let msg = JSON.parse(data);
@@ -162,9 +162,11 @@ export const readWebViewMessage = async (event, webViewRef, locationRef, isCamer
                 }
                 break;
             case 'print-receipt':
+                 blutoothRef.current = true;
                 setBluetoothEvent(msg);
                 break;
             case 'connect-bt':
+                blutoothRef.current = true;
                 setBtConnectionRequest(msg);
                 break;
 

@@ -4,6 +4,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.os.Build
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.modules.core.DeviceEventManagerModule
@@ -20,7 +21,13 @@ class TraversalReceiverModule(private val reactContext: ReactApplicationContext)
 
     init {
         val filter = IntentFilter("com.wevois.TRAVERSAL_HISTORY")
-        reactContext.registerReceiver(receiver, filter)
+
+        // ✅ Fix for Android 13+ compatibility
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            reactContext.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            reactContext.registerReceiver(receiver, filter)
+        }
     }
 
     private fun sendEvent(data: String) {

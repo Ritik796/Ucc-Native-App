@@ -33,7 +33,7 @@ const WebViewPage = () => {
   // Bluetooth States
   const [bluetoothEvent, setBluetoothEvent] = useState(null);
   const [btConnectionRequest, setBtConnectionRequest] = useState(null);
- 
+  const blutoothRef = useRef(false);
 
   useEffect(() => {
     action.requestLocationPermission();
@@ -75,8 +75,10 @@ const WebViewPage = () => {
         if (isCameraActive?.current) {
           console.log('Back from camera, skipping reload.');
           isCameraActive.current = false;
-        } else if (bluetoothEvent) {
+           return
+        } else if (blutoothRef?.current) {
           console.log('Wait,Bluetooth module is working..');
+          return
         } else {
           console.log('App returned to foreground — reloading WebView');
           setLoading(true); // Mark as loading
@@ -116,7 +118,8 @@ const WebViewPage = () => {
       setBluetoothEvent,
       setBtConnectionRequest,
       setWebData,
-      BackgroundTaskModule
+      BackgroundTaskModule,
+      blutoothRef
     );
   };
 
@@ -148,7 +151,7 @@ const WebViewPage = () => {
             key={webKey}
             ref={webViewRef}
             onMessage={handleMessage}
-            source={{ uri: 'https://fir-project-d59e1.web.app' }}
+            source={{ uri: 'http://192.168.29.181:3000' }}
             style={{ flex: 1, minHeight: '100%' }} // ✅ Ensure full height
             geolocationEnabled={true}
             mediaPlaybackRequiresUserAction={false}
@@ -168,6 +171,7 @@ const WebViewPage = () => {
         webViewRef={webViewRef}
         btConnectionRequest={btConnectionRequest}
         setBtConnectionRequest={setBtConnectionRequest}
+        blutoothRef={blutoothRef}
       />
       {/* )} */}
     </SafeAreaProvider>

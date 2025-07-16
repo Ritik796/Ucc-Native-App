@@ -6,7 +6,6 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
-import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
 import android.media.RingtoneManager
@@ -21,9 +20,8 @@ import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.math.*
-import android.widget.Toast
 
-
+@Suppress("SpellCheckingInspection")
 class MyTaskService : HeadlessJsTaskService() {
 
     private lateinit var locationManager: LocationManager
@@ -109,7 +107,7 @@ class MyTaskService : HeadlessJsTaskService() {
         saveRunnable = object : Runnable {
             override fun run() {
                 val calendar = Calendar.getInstance()
-                val currentTime = String.format("%02d:%02d", calendar.get(Calendar.HOUR_OF_DAY), calendar.get(Calendar.MINUTE))
+                val currentTime = String.format(Locale.getDefault(), "%02d:%02d", calendar.get(Calendar.HOUR_OF_DAY), calendar.get(Calendar.MINUTE))
                 Log.d("SaveRunnable", "Executing at $currentTime | traversalHistory length = ${traversalHistory.length}")
 
                 if (traversalHistory.isNotEmpty()) {
@@ -171,13 +169,14 @@ class MyTaskService : HeadlessJsTaskService() {
     }
 
     private fun getDistance(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
-        val R = 6371000.0
+        val earthRadius = 6371000.0 // in meters
         val dLat = Math.toRadians(lat2 - lat1)
         val dLon = Math.toRadians(lon2 - lon1)
         val a = sin(dLat / 2).pow(2.0) + cos(Math.toRadians(lat1)) * cos(Math.toRadians(lat2)) * sin(dLon / 2).pow(2.0)
         val c = 2 * atan2(sqrt(a), sqrt(1 - a))
-        return R * c
+        return earthRadius * c
     }
+
 
     @SuppressLint("NewApi")
     private fun startForegroundServiceWithNotification() {
@@ -210,9 +209,17 @@ class MyTaskService : HeadlessJsTaskService() {
     override fun onDestroy() {
         handler.removeCallbacks(saveRunnable)
         locationManager.removeUpdates(locationListener)
-        stopForeground(true)
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+        } else {
+            @Suppress("DEPRECATION")
+            stopForeground(true)
+        }
+
         super.onDestroy()
     }
+
 
     override fun getTaskConfig(intent: Intent?): HeadlessJsTaskConfig? {
         return intent?.extras?.let {
