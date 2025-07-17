@@ -4,30 +4,33 @@ import android.annotation.SuppressLint
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
-import android.content.Context
 import android.content.Intent
-import android.location.LocationListener
-import android.location.LocationManager
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import android.media.RingtoneManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import android.widget.Toast
 import com.facebook.react.HeadlessJsTaskService
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.jstasks.HeadlessJsTaskConfig
+import com.google.android.gms.location.*
 import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.math.*
 
-@Suppress("SpellCheckingInspection")
 class MyTaskService : HeadlessJsTaskService() {
 
-    private lateinit var locationManager: LocationManager
+    private lateinit var fusedLocationClient: FusedLocationProviderClient
+    private lateinit var locationRequest: LocationRequest
+    private lateinit var locationCallback: LocationCallback
     private lateinit var userId: String
     private lateinit var dbPath: String
-    private lateinit var locationListener: LocationListener
 
     private val handler = Handler(Looper.getMainLooper())
     private lateinit var saveRunnable: Runnable
@@ -39,83 +42,111 @@ class MyTaskService : HeadlessJsTaskService() {
     private var minuteDistance: Double = 0.0
 
     private val traversalHistory = StringBuilder()
+    private var hasFirstFix = false
+
+    private val sdf = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
+
+    // Motion detection variables
+    private lateinit var sensorManager: SensorManager
+    private var isDeviceMoving = false
+    private var lastAcceleration = FloatArray(3)
+    private var accelerationThreshold = 0.5f
+    private lateinit var motionSensorListener: SensorEventListener
 
     override fun onCreate() {
         super.onCreate()
         startForegroundServiceWithNotification()
-        locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
+        fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
+
+        sensorManager = getSystemService(SENSOR_SERVICE) as SensorManager
+        setupMotionSensor()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         userId = intent?.getStringExtra("USER_ID") ?: ""
         dbPath = intent?.getStringExtra("DB_PATH") ?: ""
         Log.d("StartLocationTraversal", "Service started with USER_ID = $userId")
+        Toast.makeText(this, "Location Tracking Start", Toast.LENGTH_SHORT).show()
         startTraversalTracking()
         return START_STICKY
     }
 
     @SuppressLint("MissingPermission")
     private fun startTraversalTracking() {
-        val sdf = SimpleDateFormat("HH:mm", Locale.getDefault())
-
-        // Initial last known location
-        locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER)?.let {
-            val lat = it.latitude
-            val lng = it.longitude
-            previousLat = lat
-            previousLng = lng
-            Log.d("InitialLocation", "Sending initial location: ($lat,$lng)")
-            sendLocationHistoryToWebView("($lat,$lng)", "0.0", userId, dbPath)
-        }
-
-        // Live continuous location updates
-        locationListener = LocationListener { location ->
-            val lat = location.latitude
-            val lng = location.longitude
-            val currentTime = sdf.format(Date())
-
-            Log.d("LocationListener", "onLocationChanged: Lat=$lat, Lng=$lng at $currentTime")
-
-            if (previousLat != null && previousLng != null) {
-                val distance = getDistance(previousLat!!, previousLng!!, lat, lng)
-                Log.d("DistanceCheck", "Distance = $distance meters | Condition: ($distance > 0 && $distance < $maxDistanceCanCover)")
-
-                if (distance > 0 && distance < maxDistanceCanCover) {
-                    Log.d("TraversalUpdate", "Appended: ($lat,$lng) | minuteDistance = ${minuteDistance + distance}")
-                    traversalHistory.append("($lat,$lng)~")
-                    minuteDistance += distance
-                } else if (distance != 0.0) {
-                    maxDistanceCanCover += maxDistance
-                }
-            } else {
-                Log.d("TraversalUpdate", "First point appended: ($lat,$lng)")
-                traversalHistory.append("($lat,$lng)~")
-            }
-
-            previousLat = lat
-            previousLng = lng
-        }
-
-        locationManager.requestLocationUpdates(
-            LocationManager.GPS_PROVIDER,
-            5000L,
-            0f,
-            locationListener
+        locationRequest = LocationRequest.Builder(
+            Priority.PRIORITY_HIGH_ACCURACY,
+            10000L
         )
+            .setMinUpdateIntervalMillis(5000L)
+            .setMinUpdateDistanceMeters(2f)
+            .build()
 
-        // Save runnable logic
+        fusedLocationClient.lastLocation.addOnSuccessListener { location ->
+            location?.let {
+                if (it.accuracy <= 15) {
+                    val lat = it.latitude
+                    val lng = it.longitude
+                    previousLat = lat
+                    previousLng = lng
+                    hasFirstFix = true
+                    sendLocationHistoryToWebView("($lat,$lng)", "0.0", userId, dbPath)
+                    Log.d("InitialFix", "Initial location: $lat, $lng at ${Date(System.currentTimeMillis())}")
+                }
+            }
+        }
+
+        locationCallback = object : LocationCallback() {
+            override fun onLocationResult(result: LocationResult) {
+                val location = result.lastLocation ?: return
+                if (location.accuracy > 15) {
+                    Log.d("FusedLocation", "Ignored inaccurate location: ${location.accuracy}")
+                    return
+                }
+                val lat = location.latitude
+                val lng = location.longitude
+                val currentTime = sdf.format(Date())
+                Log.d("FusedLocation", "Accurate location: Lat: $lat, Lng: $lng at $currentTime")
+
+                if (!hasFirstFix) {
+                    hasFirstFix = true
+                    sendLocationHistoryToWebView("($lat,$lng)", "0.0", userId, dbPath)
+                }
+                if (!isDeviceMoving) {
+                    val latDiff = abs((previousLat ?: location.latitude) - location.latitude)
+                    val lngDiff = abs((previousLng ?: location.longitude) - location.longitude)
+                    if (latDiff < 0.00005 && lngDiff < 0.00005) {
+                        Log.d("MotionFilter", "Ignored jitter location: ($latDiff, $lngDiff)")
+                        return
+                    }
+                }
+
+
+                if (previousLat != null && previousLng != null) {
+                    val distance = getDistance(previousLat!!, previousLng!!, lat, lng)
+                    if (distance > 0 && distance < maxDistanceCanCover) {
+                        traversalHistory.append("($lat,$lng)~")
+                        minuteDistance += distance
+                    } else if (distance != 0.0) {
+                        maxDistanceCanCover += maxDistance
+                    }
+                } else {
+                    traversalHistory.append("($lat,$lng)~")
+                }
+
+                previousLat = lat
+                previousLng = lng
+            }
+        }
+
+        fusedLocationClient.requestLocationUpdates(locationRequest, locationCallback, Looper.getMainLooper())
+
         saveRunnable = object : Runnable {
             override fun run() {
-                val calendar = Calendar.getInstance()
-                val currentTime = String.format(Locale.getDefault(), "%02d:%02d", calendar.get(Calendar.HOUR_OF_DAY), calendar.get(Calendar.MINUTE))
-                Log.d("SaveRunnable", "Executing at $currentTime | traversalHistory length = ${traversalHistory.length}")
-
                 if (traversalHistory.isNotEmpty()) {
                     if (traversalHistory.last() == '~') {
                         traversalHistory.setLength(traversalHistory.length - 1)
                     }
 
-                    Log.d("TraversalSave", "Final history before sending: $traversalHistory")
                     sendLocationHistoryToWebView(
                         traversalHistory.toString(),
                         minuteDistance.toString(),
@@ -128,16 +159,13 @@ class MyTaskService : HeadlessJsTaskService() {
                     maxDistanceCanCover = maxDistance
                 }
 
-                // Schedule next run
                 handler.postDelayed(this, getDelayToNextMinute())
             }
         }
 
-        // Start saveRunnable immediately for the first minute cycle
         handler.postDelayed(saveRunnable, getDelayToNextMinute())
     }
 
-    // Helper function to calculate delay to start of next minute
     private fun getDelayToNextMinute(): Long {
         val now = Calendar.getInstance()
         val nextMinute = (now.clone() as Calendar).apply {
@@ -148,13 +176,10 @@ class MyTaskService : HeadlessJsTaskService() {
         return nextMinute.timeInMillis - now.timeInMillis
     }
 
-
-
     private fun sendLocationHistoryToWebView(history: String, distance: String, userId: String, dbPath: String) {
-//        Toast.makeText(applicationContext, "Sending Location", Toast.LENGTH_SHORT).show()
         val currentTime = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
-
         val intent = Intent("com.wevois.TRAVERSAL_HISTORY")
+
         val jsonObject = JSONObject().apply {
             put("path", history)
             put("time", currentTime)
@@ -164,12 +189,16 @@ class MyTaskService : HeadlessJsTaskService() {
         }
 
         intent.putExtra("travel_history", jsonObject.toString())
+
+        val receivers = packageManager.queryBroadcastReceivers(intent, 0)
+        Log.d("BroadcastCheck", "Found ${receivers.size} receivers for TRAVERSAL_HISTORY")
+        Toast.makeText(this, "Sending Location to web view", Toast.LENGTH_LONG).show()
         sendBroadcast(intent)
-        Log.d("SendBroadcast", "Broadcasting at $currentTime: $history")
+        Toast.makeText(this, "Location sent", Toast.LENGTH_LONG).show()
     }
 
     private fun getDistance(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
-        val earthRadius = 6371000.0 // in meters
+        val earthRadius = 6371000.0
         val dLat = Math.toRadians(lat2 - lat1)
         val dLon = Math.toRadians(lon2 - lon1)
         val a = sin(dLat / 2).pow(2.0) + cos(Math.toRadians(lat1)) * cos(Math.toRadians(lat2)) * sin(dLon / 2).pow(2.0)
@@ -177,6 +206,27 @@ class MyTaskService : HeadlessJsTaskService() {
         return earthRadius * c
     }
 
+    private fun setupMotionSensor() {
+        motionSensorListener = object : SensorEventListener {
+            override fun onSensorChanged(event: SensorEvent?) {
+                if (event?.sensor?.type == Sensor.TYPE_ACCELEROMETER) {
+                    val deltaX = abs(lastAcceleration[0] - event.values[0])
+                    val deltaY = abs(lastAcceleration[1] - event.values[1])
+                    val deltaZ = abs(lastAcceleration[2] - event.values[2])
+
+                    val totalMovement = sqrt((deltaX * deltaX + deltaY * deltaY + deltaZ * deltaZ).toDouble())
+
+                    isDeviceMoving = totalMovement > accelerationThreshold
+                    lastAcceleration = event.values.clone()
+                }
+            }
+
+            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+        }
+
+        val accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+        sensorManager.registerListener(motionSensorListener, accelerometer, SensorManager.SENSOR_DELAY_NORMAL)
+    }
 
     @SuppressLint("NewApi")
     private fun startForegroundServiceWithNotification() {
@@ -188,6 +238,7 @@ class MyTaskService : HeadlessJsTaskService() {
                 NotificationManager.IMPORTANCE_DEFAULT
             )
             channel.enableVibration(true)
+            channel.setShowBadge(false)
             channel.setSound(
                 RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION),
                 Notification.AUDIO_ATTRIBUTES_DEFAULT
@@ -208,7 +259,8 @@ class MyTaskService : HeadlessJsTaskService() {
 
     override fun onDestroy() {
         handler.removeCallbacks(saveRunnable)
-        locationManager.removeUpdates(locationListener)
+        fusedLocationClient.removeLocationUpdates(locationCallback)
+        sensorManager.unregisterListener(motionSensorListener)
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             stopForeground(STOP_FOREGROUND_REMOVE)
@@ -219,7 +271,6 @@ class MyTaskService : HeadlessJsTaskService() {
 
         super.onDestroy()
     }
-
 
     override fun getTaskConfig(intent: Intent?): HeadlessJsTaskConfig? {
         return intent?.extras?.let {

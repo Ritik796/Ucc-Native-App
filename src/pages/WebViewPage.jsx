@@ -47,7 +47,7 @@ const WebViewPage = () => {
   }, []);
  useEffect(() => {
     const subscription = DeviceEventEmitter.addListener('onTraversalUpdate', history => {
-      // console.log('📍 Received Travel History via Native Module:', history);
+      console.log('📍 Received Travel History via Native Module:', history);
       handleSaveLocatinHistory(history);
     });
 
@@ -151,7 +151,7 @@ const WebViewPage = () => {
             key={webKey}
             ref={webViewRef}
             onMessage={handleMessage}
-            source={{ uri: 'http://192.168.29.181:3000' }}
+            source={{ uri: 'https://ucc-payment-app.web.app' }}
             style={{ flex: 1, minHeight: '100%' }} // ✅ Ensure full height
             geolocationEnabled={true}
             mediaPlaybackRequiresUserAction={false}
