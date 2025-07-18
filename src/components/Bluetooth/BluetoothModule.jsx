@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   connectionEstablish,
   handleBluetoothConnection,
@@ -18,7 +18,7 @@ const BluetoothModule = ({
   const [deviceList, setDeviceList] = useState([]);
   const [isDeviceConnected, setIsDeviceConnected] = useState(false);
   const [isBluetoothProcessDone, setIsBluetoothProcessDone] = useState(false);
-    useEffect(() => {
+  useEffect(() => {
     if (btEvent?.type === 'print-receipt') {
       handleBluetoothConnection(
         setError,
@@ -31,7 +31,7 @@ const BluetoothModule = ({
   }, [btEvent]);
 
   // Step 2: Handle Device Pairing
-  useMemo(() => {
+  useEffect(() => {
     if (btConnectionRequest) {
       handleDevicePairing(
         btConnectionRequest?.data,
@@ -46,6 +46,7 @@ const BluetoothModule = ({
   useEffect(() => {
     if (error && error?.msg && webViewRef?.current) {
       postBtWebMessages(webViewRef, 'nativeError', error);
+      postBtWebMessages(webViewRef, 'bluetooth', { showList: false, loader: false });
       setBtConnectionRequest(null);
       setError(null);
     }

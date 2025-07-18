@@ -2,11 +2,11 @@ import RNBluetoothClassic from 'react-native-bluetooth-classic';
 import { PermissionsAndroid, Platform } from "react-native";
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-export const handleBluetoothConnection = async (setError, webViewRef, setDeviceList, setIsDeviceConnected,isDeviceConnected) => {
+export const handleBluetoothConnection = async (setError, webViewRef, setDeviceList, setIsDeviceConnected, isDeviceConnected) => {
     try {
         const bluetoothAccess = await requestBluetoothPermissions(setError);
         if (bluetoothAccess) {
-            setupBluetooth(setError, webViewRef, setDeviceList, setIsDeviceConnected,isDeviceConnected);
+            setupBluetooth(setError, webViewRef, setDeviceList, setIsDeviceConnected, isDeviceConnected);
         }
     } catch (err) {
         console.warn('Permission request error:', err);
@@ -75,7 +75,7 @@ export const getBluetoothDeviceList = async (webViewRef, setDeviceList) => {
     catch (e) {
         if (e.toString() !== 'Error: Bluetooth already in discovery mode') {
             setError({ visible: true, type: 'BLUETOOTH', msg: 'Please wait..' });
-            postBtWebMessages(webViewRef, 'bluetooth', { showList: true, loader: true, deviceList: [] });
+            // postBtWebMessages(webViewRef, 'bluetooth', { showList: true, loader: true, deviceList: [] });
         }
     }
 }
@@ -135,6 +135,7 @@ export const reconnectBt = async () => {
     if (lastConnectedDevice && isBtOn) {
         const pairedDevices = await RNBluetoothClassic.getBondedDevices();
         let device = pairedDevices.find(item => item.address === JSON.parse(lastConnectedDevice));
+
         if (device) {
             await device.connect();
         }
@@ -144,18 +145,19 @@ export const postBtWebMessages = async (webViewRef, type, data) => {
     webViewRef?.current?.postMessage(JSON.stringify({ type, data }));
 }
 export const printReceipt = async (device, printData, setBtEvent) => {
-    // console.log('hey askdjkasdjasjdkasjdjkas')
     await AsyncStorage.setItem('lastConnectedDevice', JSON.stringify(device.address));
     await device.write(printData + '\n');
     // setBtEvent(null);
 }
 export const connectionEstablish = async (webViewRef, isDeviceConnected, deviceList, btEvent, setBtEvent) => {
+    const { name, address } = isDeviceConnected || {};
     if (isDeviceConnected) {
         postBtWebMessages(webViewRef, 'bluetooth', {
             showList: false,
             loader: false,
             deviceList: deviceList,
-            stauts: 'connected',
+            status: 'connected',
+            deviceData: { name, address }
         });
         printReceipt(isDeviceConnected, btEvent?.data, setBtEvent);
         return;
@@ -164,6 +166,7 @@ export const connectionEstablish = async (webViewRef, isDeviceConnected, deviceL
         showList: false,
         loader: false,
         deviceList: deviceList,
-        stauts: 'failed',
+        status: 'failed',
+        deviceData: { name, address }
     });
 }
