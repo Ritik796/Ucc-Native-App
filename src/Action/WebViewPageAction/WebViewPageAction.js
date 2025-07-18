@@ -243,7 +243,7 @@ const sendPaymentRequestToUrl = async (paymentPayload, url, webViewRef) => {
         const errorJS = `
             window.dispatchEvent(new MessageEvent('message', {
                 data: JSON.stringify({
-                    type: 'payment-error',
+                    type: 'payment-catch-error',
                     error: ${JSON.stringify(error.message)}
                 })
             }));
@@ -251,6 +251,50 @@ const sendPaymentRequestToUrl = async (paymentPayload, url, webViewRef) => {
         webViewRef.current?.injectJavaScript(errorJS);
     }
 };
+
+// const sendPaymentRequestToUrl = async (paymentPayload, url, webViewRef) => {
+//     try {
+//         const response = await axios.post(url, paymentPayload, {
+//             headers: { 'Content-Type': 'application/json' }
+//         });
+//         console.log('response:', response?.data);
+//         let injectedJS;
+//         if (response.status === 200 && response.data) {
+//             injectedJS = `
+//             window.dispatchEvent(new MessageEvent('message', {
+//                 data: JSON.stringify({
+//                     type: 'payment-success',
+//                     status: 'success',
+//                     data: ${JSON.stringify(response.data)}
+//                 })
+//             }));
+//         `;
+//         } else {
+//             injectedJS = `
+//             window.dispatchEvent(new MessageEvent('message', {
+//                 data: JSON.stringify({
+//                     type: 'payment-error',
+//                     status: 'fail',
+//                     data: ${JSON.stringify(response.data)}
+//                 })
+//             }));
+//         `;
+//         }
+//         webViewRef.current?.injectJavaScript(injectedJS);
+
+//     } catch (error) {
+//         console.log('Payment failed:', error.message);
+//         const errorJS = `
+//             window.dispatchEvent(new MessageEvent('message', {
+//                 data: JSON.stringify({
+//                     type: 'payment-catch-error',
+//                     error: ${JSON.stringify(error.message)}
+//                 })
+//             }));
+//         `;
+//         webViewRef.current?.injectJavaScript(errorJS);
+//     }
+// };
 
 const getPaymentStatusFromApi = (webViewRef, url, payloadData) => {
     let attempt = 1;
@@ -297,7 +341,7 @@ const getPaymentStatusFromApi = (webViewRef, url, payloadData) => {
         const errorJS = `
                 window.dispatchEvent(new MessageEvent('message', {
                     data: JSON.stringify({
-                        type: 'paymentStatus-error',
+                        type: 'paymentStatus-catch-error',
                         message: ${JSON.stringify(error.message)}
                     })
                 }));
@@ -308,6 +352,64 @@ const getPaymentStatusFromApi = (webViewRef, url, payloadData) => {
         attempt++;
     }, 6000);
 };
+
+// const getPaymentStatusFromApi = (webViewRef, url, payloadData) => {
+//     let attempt = 1;
+//     const interval = setInterval(async () => {
+//         console.log(`🔁 Payment Status Check: Attempt ${attempt}`);
+//         try {
+//             const response = await axios.post(url, payloadData, {
+//                 headers: { 'Content-Type': 'application/json' }
+//             });
+//             console.log('Payment Status Response:', response?.data);
+
+//             const { ResponseCode, ResponseMessage } = response.data;
+//             const code = Number(ResponseCode);
+
+//             if (code === 0) {
+//                 console.log('✅ Payment Success');
+//                 const successJS = `
+//                 window.dispatchEvent(new MessageEvent('message', {
+//                     data: JSON.stringify({
+//                         type: 'paymentStatus-success',
+//                         data: ${JSON.stringify(response.data)}
+//                     })
+//                 }));
+//             `;
+//                 webViewRef.current?.injectJavaScript(successJS);
+//                 clearInterval(interval);
+//             } else if (code === 1 || code === 1052) {
+//                 console.log('❌ Payment Failed');
+//                 const failJS = `
+//                 window.dispatchEvent(new MessageEvent('message', {
+//                     data: JSON.stringify({
+//                         type: 'paymentStatus-error',
+//                         message: ${JSON.stringify(response.data)}
+//                     })
+//                 }));
+//             `;
+//                 webViewRef.current?.injectJavaScript(failJS);
+//                 clearInterval(interval);
+//             } else {
+//                 console.log(`⚠️ Retry after 6 sec... ResponseCode=${code}`);
+//             }
+//         } catch (error) {
+//             console.log('❌ Error fetching payment status:', error.message);
+//             const errorJS = `
+//                 window.dispatchEvent(new MessageEvent('message', {
+//                     data: JSON.stringify({
+//                         type: 'paymentStatus-catch-error',
+//                         message: ${JSON.stringify(error.message)}
+//                     })
+//                 }));
+//             `;
+//             webViewRef.current?.injectJavaScript(errorJS);
+//             clearInterval(interval);
+//         }
+//         attempt++;
+//     }, 6000);
+// };
+
 
 // const sendPaymentRequestToUrl = async (paymentPayload, url, webViewRef) => {
 //     try {
