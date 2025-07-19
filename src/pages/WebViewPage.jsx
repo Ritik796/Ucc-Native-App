@@ -6,7 +6,8 @@ import {
   KeyboardAvoidingView,
   Platform,
   NativeModules,
-  DeviceEventEmitter
+  DeviceEventEmitter,
+  BackHandler
 
 } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
@@ -25,15 +26,16 @@ const WebViewPage = () => {
   const [showCamera, setShowCamera] = useState(false);
   const [base64Image, setBase64Image] = useState('');
   const [loader, setLoader] = useState(false);
-  const [webData, setWebData] = useState({ userId: "", dbPath: "" })
+  const [webData, setWebData] = useState({ userId: "", dbPath: "" });
   const webViewRef = useRef(null);
   const locationRef = useRef(null);
   const isCameraActive = useRef(null);
-  const { BackgroundTaskModule } = NativeModules
+  const { BackgroundTaskModule, ConnectivityModule } = NativeModules;
   // Bluetooth States
   const [bluetoothEvent, setBluetoothEvent] = useState(null);
   const [btConnectionRequest, setBtConnectionRequest] = useState(null);
   const blutoothRef = useRef(false);
+  const refContext = useRef({ traversalUpdate: null, networkStatus: null, locationStatus: null });
 
   useEffect(() => {
     action.requestLocationPermission();
@@ -46,26 +48,23 @@ const WebViewPage = () => {
     // eslint-disable-next-line
   }, []);
   useEffect(() => {
-    const subscription = DeviceEventEmitter.addListener('onTraversalUpdate', history => {
-      console.log('📍 Received Travel History via Native Module:', history);
-      handleSaveLocatinHistory(history);
-    });
-
-    return () => subscription.remove();
+    const androidListener = action.listenAndroidMessages(refContext, webViewRef, BackgroundTaskModule,locationRef);
+    return () => {
+      androidListener(); // clean up all listeners
+    };
+    // eslint-disable-next-line
   }, []);
-  // useEffect(() => {
-  //   const backAction = () => {
-  //     console.log("backAction");
-  //     webViewRef.current?.postMessage(JSON.stringify({ type: "EXIT_REQUEST" }));
-  //     return true;
-  //   };
+  useEffect(() => {
+    const backAction = () => {
+      webViewRef.current?.postMessage(JSON.stringify({ type: "EXIT_REQUEST" }));
+      return true;
+    };
 
-  //   const backHandler = BackHandler.addEventListener("hardwareBackPress", backAction);
-  //   return () => backHandler.remove();
-  // }, []);
+    const backHandler = BackHandler.addEventListener("hardwareBackPress", backAction);
+    return () => backHandler.remove();
+  }, []);
 
   const handleAppStateChange = async nextAppState => {
-    console.log('AppState changed:', nextAppState);
     isCameraActive.current = false;
     try {
       if (
@@ -73,14 +72,11 @@ const WebViewPage = () => {
         nextAppState === 'active'
       ) {
         if (isCameraActive?.current) {
-          console.log('Back from camera, skipping reload.');
           isCameraActive.current = false;
-          return
+          return;
         } else if (blutoothRef?.current) {
-          console.log('Wait,Bluetooth module is working..');
-          return
+          return;
         } else {
-          console.log('App returned to foreground — reloading WebView');
           setLoading(true); // Mark as loading
           setWebKey(prevKey => prevKey + 1); // Delay ensures loading gets shown
           reconnectBt();
@@ -88,23 +84,26 @@ const WebViewPage = () => {
       }
 
       if (nextAppState.match(/inactive|background/)) {
-        console.log(
-          'App moved to background/inactive. Stopping location tracking.',
-          locationRef.current,
-        );
         action.stopTracking(locationRef);
+        stopConnectivityListener();
       }
 
       appState.current = nextAppState;
     } catch (error) {
-      console.log(error);
+      return;
     }
   };
-  const handleSaveLocatinHistory = (history) => {
-    // action.startSavingTraversalHistory(history,webData.userId,webData.dbPath)
-  }
+
   const handleStopLoading = () => {
     setTimeout(() => setLoading(false), 1000);
+    startConnectivityListener();
+
+  };
+  const startConnectivityListener = () => {
+    ConnectivityModule.startMonitoring();
+  };
+  const stopConnectivityListener = () => {
+    ConnectivityModule.stopMonitoring();
   };
 
   const handleMessage = event => {
@@ -122,7 +121,6 @@ const WebViewPage = () => {
       blutoothRef
     );
   };
-
   return (
     <SafeAreaProvider>
       <SafeAreaView style={styles.safeContainer}>
@@ -151,7 +149,7 @@ const WebViewPage = () => {
             key={webKey}
             ref={webViewRef}
             onMessage={handleMessage}
-            source={{ uri: 'http://192.168.29.9:3000/' }}
+            source={{ uri: 'http://192.168.12.144:3000/' }}
             style={{ flex: 1, minHeight: '100%' }} // ✅ Ensure full height
             geolocationEnabled={true}
             mediaPlaybackRequiresUserAction={false}

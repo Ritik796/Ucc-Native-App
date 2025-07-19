@@ -11,9 +11,8 @@ import com.facebook.react.defaults.DefaultReactHost.getDefaultReactHost
 import com.facebook.react.defaults.DefaultReactNativeHost
 import com.facebook.react.soloader.OpenSourceMergedSoMapping
 import com.facebook.soloader.SoLoader
-import com.wevois.paymentapp.BackgroundTaskPackage
-import com.wevois.paymentapp.TraversalReceiverPackage
-import com.wevois.paymentapp.BuildConfig // ✅ Correct import
+import com.wevois.paymentapp.connectivityManager.ConnectivityPackage
+
 
 class MainApplication : Application(), ReactApplication {
 
@@ -21,10 +20,11 @@ class MainApplication : Application(), ReactApplication {
     object : DefaultReactNativeHost(this) {
       override fun getPackages(): List<ReactPackage> =
         PackageList(this).packages.apply {
-          // Packages that cannot be autolinked yet can be added manually here, for example:
+          // Packages that cannot be auto linked yet can be added manually here, for example:
           // add(MyReactNativePackage())
           add(BackgroundTaskPackage())
           add(TraversalReceiverPackage())
+          add(ConnectivityPackage())
         }
 
       override fun getJSMainModuleName(): String = "index"

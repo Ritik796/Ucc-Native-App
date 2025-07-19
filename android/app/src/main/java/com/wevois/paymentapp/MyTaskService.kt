@@ -14,7 +14,6 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
-import android.widget.Toast
 import com.facebook.react.HeadlessJsTaskService
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.jstasks.HeadlessJsTaskConfig
@@ -66,7 +65,6 @@ class MyTaskService : HeadlessJsTaskService() {
         userId = intent?.getStringExtra("USER_ID") ?: ""
         dbPath = intent?.getStringExtra("DB_PATH") ?: ""
         Log.d("StartLocationTraversal", "Service started with USER_ID = $userId")
-        Toast.makeText(this, "Location Tracking Start", Toast.LENGTH_SHORT).show()
         startTraversalTracking()
         return START_STICKY
     }
@@ -192,9 +190,8 @@ class MyTaskService : HeadlessJsTaskService() {
 
         val receivers = packageManager.queryBroadcastReceivers(intent, 0)
         Log.d("BroadcastCheck", "Found ${receivers.size} receivers for TRAVERSAL_HISTORY")
-        Toast.makeText(this, "Sending Location to web view", Toast.LENGTH_LONG).show()
+
         sendBroadcast(intent)
-        Toast.makeText(this, "Location sent", Toast.LENGTH_LONG).show()
     }
 
     private fun getDistance(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {

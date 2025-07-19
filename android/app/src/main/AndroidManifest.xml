@@ -31,6 +31,8 @@
     <!-- ✅ Battery Optimizations -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
+    <!-- ✅ Network State Access -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <application
         android:name=".MainApplication"
         android:allowBackup="false"
@@ -65,12 +67,21 @@
         <!-- ✅ Your foreground service for location -->
         
               <receiver
-        android:name=".MyReceiver"
-        android:exported="false" />
+                android:name=".MyReceiver"
+                android:exported="false" />
          <service
             android:name=".MyTaskService"
             android:foregroundServiceType="location"
             android:exported="false" />
+      <!-- ✅ Your foreground service for check mobile location and data is on/off -->
+            <receiver android:name=".ConnectivityModule"
+                android:exported="true">
+                <intent-filter>
+                    <action android:name="android.location.PROVIDERS_CHANGED"/>
+                    <action android:name="android.net.conn.CONNECTIVITY_CHANGE"/>
+                    <action android:name="android.intent.action.BOOT_COMPLETED"/>
+                </intent-filter>
+</receiver>
             
     </application>
 

@@ -1,11 +1,11 @@
 import axios from "axios";
-import { PermissionsAndroid, Platform } from "react-native";
+import { PermissionsAndroid, Platform, DeviceEventEmitter } from "react-native";
 import Geolocation from "@react-native-community/geolocation";
 import DeviceInfo from "react-native-device-info";
-import * as locationService from '../../Services/LocationServices'
+import * as locationService from '../../Services/LocationServices';
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 export const requestLocationPermission = async () => {
-    console.log('run');
     try {
         if (Platform.OS !== "android") return true; // iOS handled differently
 
@@ -21,13 +21,10 @@ export const requestLocationPermission = async () => {
             PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS
         ]);
 
-        console.log("Permission results:", granted);
-
         if (
             granted[PermissionsAndroid.PERMISSIONS.CAMERA] !==
             PermissionsAndroid.RESULTS.GRANTED
         ) {
-            console.log("Camera permission denied");
             isPermission = false;
         }
 
@@ -35,35 +32,30 @@ export const requestLocationPermission = async () => {
             granted[PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION] !==
             PermissionsAndroid.RESULTS.GRANTED
         ) {
-            console.log("Location permission denied");
             isPermission = false;
         }
         if (
             granted[PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE] !==
             PermissionsAndroid.RESULTS.GRANTED
         ) {
-            console.log("READ_EXTERNAL_STORAGE permission denied");
             isPermission = false;
         }
         if (
             granted[PermissionsAndroid.PERMISSIONS.READ_MEDIA_IMAGES] !==
             PermissionsAndroid.RESULTS.GRANTED
         ) {
-            console.log("READ_MEDIA_IMAGES permission denied");
             isPermission = false;
         }
         if (
             granted[PermissionsAndroid.PERMISSIONS.ACCESS_MEDIA_LOCATION] !==
             PermissionsAndroid.RESULTS.GRANTED
         ) {
-            console.log("ACCESS_MEDIA_LOCATION permission denied");
             isPermission = false;
         }
         if (
             granted[PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS] !==
             PermissionsAndroid.RESULTS.GRANTED
         ) {
-            console.log("POST_NOTIFICATIONS permission denied");
             isPermission = false;
         }
 
@@ -73,7 +65,6 @@ export const requestLocationPermission = async () => {
         );
 
         if (bgGranted !== PermissionsAndroid.RESULTS.GRANTED) {
-            console.log("ACCESS_BACKGROUND_LOCATION permission denied");
             isPermission = false;
         }
 
@@ -90,12 +81,9 @@ export const startLocationTracking = async (locationRef, webViewRef) => {
         const watchId = Geolocation.watchPosition(
             (position) => {
                 const { latitude, longitude, accuracy } = position.coords;
-                console.log("watchPosition callback:", latitude, longitude, accuracy);
 
                 if (accuracy != null && accuracy <= 15) {
                     webViewRef?.current?.postMessage(JSON.stringify({ type: "Location", status: "success", data: { lat: latitude, lng: longitude } }));
-                } else {
-                    console.log("Skipped low-accuracy position:", accuracy);
                 }
             },
             (error) => {
@@ -114,7 +102,6 @@ export const startLocationTracking = async (locationRef, webViewRef) => {
         locationRef.current = watchId;
     } catch (error) {
         if (locationRef.current != null) {
-            // console.log("Clearing watchPosition with id:", locationRef.current);
             Geolocation.clearWatch(locationRef.current);
             locationRef.current = null;
         }
@@ -123,7 +110,6 @@ export const startLocationTracking = async (locationRef, webViewRef) => {
 
 export const stopLocationTracking = (locationRef, setWebData) => {
     if (locationRef?.current) {
-        // console.log("Location tracking stopped.", locationRef.current);
         Geolocation.clearWatch(locationRef.current);
         locationRef.current = null;
 
@@ -135,7 +121,6 @@ export const stopLocationTracking = (locationRef, setWebData) => {
 
 export const stopTracking = async (locationRef) => {
     if (locationRef?.current) {
-        console.log("Location tracking stopped.", locationRef.current);
         await Geolocation.clearWatch(locationRef.current);
         locationRef.current = null;
     }
@@ -157,7 +142,7 @@ export const readWebViewMessage = async (event, webViewRef, locationRef, isCamer
                     setShowCamera(true);
                     setIsVisible(true);
                 } else {
-                    webViewRef.current?.postMessage(JSON.stringify({ type: "Location_Disabled" }));
+                    webViewRef.current?.postMessage(JSON.stringify({ type: "Location_Status",data:{isLocationOn:false} }));
                     isCameraActive.current = false;
                 }
                 break;
@@ -171,20 +156,22 @@ export const readWebViewMessage = async (event, webViewRef, locationRef, isCamer
                 break;
 
             case 'StartBackGroundService':
-                setWebData(pre => ({ ...pre, userId: msg?.data?.userId || "", dbPath: msg?.data?.dbPath || "" }))
-                StartBackgroundTask(msg.data.userId, msg.data.dbPath, BackgroundTaskModule)
+                setWebData(pre => ({ ...pre, userId: msg?.data?.userId || "", dbPath: msg?.data?.dbPath || "" }));
+                StartBackgroundTask(msg.data.userId, msg.data.dbPath, BackgroundTaskModule);
+                await AsyncStorage.setItem('userId', msg?.data?.userId || "");
+                await AsyncStorage.setItem('dbPath', msg?.data?.dbPath || "");
                 break;
             case 'Logout':
                 StopBackGroundTask(BackgroundTaskModule);
                 break;
             case 'message':
-                console.log(msg.type, msg.data)
+                // console.log(msg.type, msg.data)
                 break;
             case 'payment':
                 sendPaymentRequestToUrl(msg?.data?.paymentData, msg?.data?.url, webViewRef);
                 break;
             case 'paymentStatus':
-                getPaymentStatusFromApi(webViewRef, msg?.data?.url, msg?.data?.payloadData)
+                getPaymentStatusFromApi(webViewRef, msg?.data?.url, msg?.data?.payloadData);
                 break;
             default:
                 break;
@@ -198,14 +185,14 @@ const StartBackgroundTask = (userId, dbPath, BackgroundTaskModule) => {
         USER_ID: userId || "",
         DB_PATH: dbPath || "",
     });
-}
+};
 const StopBackGroundTask = (BackgroundTaskModule) => {
     BackgroundTaskModule.stopBackgroundTask();
-}
+};
 export const startSavingTraversalHistory = async (history) => {
     let data = JSON.parse(history);
     locationService.saveLocationHistory(data.path, data.distance, data.time, data.userId, data.dbPath);
-}
+};
 
 
 const sendPaymentRequestToUrl = async (paymentPayload, url, webViewRef) => {
@@ -213,7 +200,6 @@ const sendPaymentRequestToUrl = async (paymentPayload, url, webViewRef) => {
         const response = await axios.post(url, paymentPayload, {
             headers: { 'Content-Type': 'application/json' }
         });
-        console.log('response:', response?.data);
         let injectedJS;
         if (response.status === 200 && response.data) {
             injectedJS = `
@@ -239,7 +225,6 @@ const sendPaymentRequestToUrl = async (paymentPayload, url, webViewRef) => {
         webViewRef.current?.injectJavaScript(injectedJS);
 
     } catch (error) {
-        console.log('Payment failed:', error.message);
         const errorJS = `
             window.dispatchEvent(new MessageEvent('message', {
                 data: JSON.stringify({
@@ -252,12 +237,64 @@ const sendPaymentRequestToUrl = async (paymentPayload, url, webViewRef) => {
     }
 };
 
+export const listenAndroidMessages = (refContext, webViewRef,BackgroundTaskModule,locationRef) => {
+    refContext.current.traversalUpdate = DeviceEventEmitter.addListener(
+        'onTraversalUpdate',
+        history => {
+            // startSavingTraversalHistory(history);
+        }
+    );
+
+    refContext.current.networkStatus = DeviceEventEmitter.addListener(
+        'onConnectivityStatus',
+        mobile => {
+           
+            sendNetWorkStatus(mobile, webViewRef);
+        }
+    );
+
+    refContext.current.locationStatus = DeviceEventEmitter.addListener(
+        'onLocationStatus',
+        location => {
+
+            sendLocationStatus(location, webViewRef,BackgroundTaskModule,locationRef);
+        }
+    );
+
+    return () => {
+        refContext?.current?.traversalUpdate?.remove();
+        refContext?.current?.networkStatus?.remove();
+        refContext?.current?.locationStatus?.remove();
+    };
+};
+
+
+
+const sendNetWorkStatus = (mobile, webViewRef) => {
+    webViewRef?.current?.postMessage(JSON.stringify({ type: "Mobile_Data", data: mobile }));
+};
+const sendLocationStatus = async (location, webViewRef,BackgroundTaskModule,locationRef) => {
+    webViewRef?.current?.postMessage(JSON.stringify({ type: "Location_Status", data: location }));
+    let data = await Promise.all([
+        AsyncStorage.getItem('userId'),
+        AsyncStorage.getItem('dbPath'),
+    ]);
+    let [userId, dbPath] = data;
+    if (userId && dbPath && location?.isLocationOn === false) {
+        StopBackGroundTask(BackgroundTaskModule);
+        stopTracking(locationRef)
+    }
+    else if (userId && dbPath && location?.isLocationOn === true) {
+        StartBackgroundTask(userId,dbPath,BackgroundTaskModule);
+        startLocationTracking(locationRef,webViewRef)
+    }
+};
+
 // const sendPaymentRequestToUrl = async (paymentPayload, url, webViewRef) => {
 //     try {
 //         const response = await axios.post(url, paymentPayload, {
 //             headers: { 'Content-Type': 'application/json' }
 //         });
-//         console.log('response:', response?.data);
 //         let injectedJS;
 //         if (response.status === 200 && response.data) {
 //             injectedJS = `
@@ -283,7 +320,6 @@ const sendPaymentRequestToUrl = async (paymentPayload, url, webViewRef) => {
 //         webViewRef.current?.injectJavaScript(injectedJS);
 
 //     } catch (error) {
-//         console.log('Payment failed:', error.message);
 //         const errorJS = `
 //             window.dispatchEvent(new MessageEvent('message', {
 //                 data: JSON.stringify({
@@ -299,19 +335,18 @@ const sendPaymentRequestToUrl = async (paymentPayload, url, webViewRef) => {
 const getPaymentStatusFromApi = (webViewRef, url, payloadData) => {
     let attempt = 1;
     const interval = setInterval(async () => {
-    console.log(`🔁 Payment Status Check: Attempt ${attempt}`);
-    try {
-        const response = await axios.post(url, payloadData, {
-            headers: { 'Content-Type': 'application/json' }
-        });
-        console.log('Payment Status Response:', response?.data);
+        try {
+            const response = await axios.post(url, payloadData, {
+                headers: { 'Content-Type': 'application/json' }
+            });
+            // console.log('Payment Status Response:', response?.data);
 
-        const { ResponseCode, ResponseMessage } = response.data;
-        const code = Number(ResponseCode);
+            const { ResponseCode, ResponseMessage } = response.data;
+            const code = Number(ResponseCode);
 
-        if (code === 0) {
-            console.log('✅ Payment Success');
-            const successJS = `
+            if (code === 0) {
+                // console.log('✅ Payment Success');
+                const successJS = `
                 window.dispatchEvent(new MessageEvent('message', {
                     data: JSON.stringify({
                         type: 'paymentStatus-success',
@@ -319,11 +354,11 @@ const getPaymentStatusFromApi = (webViewRef, url, payloadData) => {
                     })
                 }));
             `;
-            webViewRef.current?.injectJavaScript(successJS);
-            clearInterval(interval);
-        } else if (code === 1 || code === 1052) {
-            console.log('❌ Payment Failed');
-            const failJS = `
+                webViewRef.current?.injectJavaScript(successJS);
+                clearInterval(interval);
+            } else if (code === 1 || code === 1052) {
+                // console.log('❌ Payment Failed');
+                const failJS = `
                 window.dispatchEvent(new MessageEvent('message', {
                     data: JSON.stringify({
                         type: 'paymentStatus-error',
@@ -331,14 +366,14 @@ const getPaymentStatusFromApi = (webViewRef, url, payloadData) => {
                     })
                 }));
             `;
-            webViewRef.current?.injectJavaScript(failJS);
-            clearInterval(interval);
-        } else {
-            console.log(`⚠️ Retry after 6 sec... ResponseCode=${code}`);
-        }
-    } catch (error) {
-        console.log('❌ Error fetching payment status:', error.message);
-        const errorJS = `
+                webViewRef.current?.injectJavaScript(failJS);
+                clearInterval(interval);
+            } else {
+                // console.log(`⚠️ Retry after 6 sec... ResponseCode=${code}`);
+            }
+        } catch (error) {
+            // console.log('❌ Error fetching payment status:', error.message);
+            const errorJS = `
                 window.dispatchEvent(new MessageEvent('message', {
                     data: JSON.stringify({
                         type: 'paymentStatus-catch-error',
@@ -346,9 +381,9 @@ const getPaymentStatusFromApi = (webViewRef, url, payloadData) => {
                     })
                 }));
             `;
-        webViewRef.current?.injectJavaScript(errorJS);
-        clearInterval(interval);
-    }
+            webViewRef.current?.injectJavaScript(errorJS);
+            clearInterval(interval);
+        }
         attempt++;
     }, 6000);
 };
