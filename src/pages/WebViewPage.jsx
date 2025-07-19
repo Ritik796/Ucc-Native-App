@@ -6,7 +6,6 @@ import {
   KeyboardAvoidingView,
   Platform,
   NativeModules,
-  DeviceEventEmitter,
   BackHandler
 
 } from 'react-native';
@@ -37,32 +36,33 @@ const WebViewPage = () => {
   const blutoothRef = useRef(false);
   const refContext = useRef({ traversalUpdate: null, networkStatus: null, locationStatus: null });
 
-  useEffect(() => {
-    action.requestLocationPermission();
-    const subscription = AppState.addEventListener(
-      'change',
-      handleAppStateChange,
-    );
-    return () => subscription.remove();
+useEffect(() => {
+  // Request location permission
+  action.requestLocationPermission();
 
-    // eslint-disable-next-line
-  }, []);
-  useEffect(() => {
-    const androidListener = action.listenAndroidMessages(refContext, webViewRef, BackgroundTaskModule,locationRef);
-    return () => {
-      androidListener(); // clean up all listeners
-    };
-    // eslint-disable-next-line
-  }, []);
-  useEffect(() => {
-    const backAction = () => {
-      webViewRef.current?.postMessage(JSON.stringify({ type: "EXIT_REQUEST" }));
-      return true;
-    };
+  // Add AppState change listener
+  const subscription = AppState.addEventListener('change', handleAppStateChange);
 
-    const backHandler = BackHandler.addEventListener("hardwareBackPress", backAction);
-    return () => backHandler.remove();
-  }, []);
+  // Start Android listeners
+  const androidListener = action.listenAndroidMessages(refContext, webViewRef, BackgroundTaskModule, locationRef);
+
+  // Add back button listener
+  const backAction = () => {
+    webViewRef.current?.postMessage(JSON.stringify({ type: "EXIT_REQUEST" }));
+    return true;
+  };
+  const backHandler = BackHandler.addEventListener("hardwareBackPress", backAction);
+
+  // Cleanup
+  return () => {
+    subscription.remove();
+    androidListener(); // cleanup Android listeners
+    backHandler.remove();
+  };
+
+  // eslint-disable-next-line
+}, []);
+
 
   const handleAppStateChange = async nextAppState => {
     isCameraActive.current = false;
