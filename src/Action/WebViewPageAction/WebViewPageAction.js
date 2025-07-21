@@ -1,5 +1,5 @@
 import axios from "axios";
-import { PermissionsAndroid, Platform, DeviceEventEmitter } from "react-native";
+import { PermissionsAndroid, Platform, DeviceEventEmitter, BackHandler } from "react-native";
 import Geolocation from "@react-native-community/geolocation";
 import DeviceInfo from "react-native-device-info";
 import * as locationService from '../../Services/LocationServices';
@@ -164,6 +164,9 @@ export const readWebViewMessage = async (event, webViewRef, locationRef, isCamer
             case 'Logout':
                 StopBackGroundTask(BackgroundTaskModule);
                 break;
+            case 'Exit_App':
+                handleExitApp();
+                break;
             case 'message':
                 // console.log(msg.type, msg.data)
                 break;
@@ -290,6 +293,9 @@ const sendLocationStatus = async (location, webViewRef,BackgroundTaskModule,loca
     }
 };
 
+const handleExitApp =()=>{
+    BackHandler.exitApp();
+}
 // const sendPaymentRequestToUrl = async (paymentPayload, url, webViewRef) => {
 //     try {
 //         const response = await axios.post(url, paymentPayload, {
