@@ -10,6 +10,8 @@ import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import androidx.core.content.ContextCompat
 import com.facebook.react.bridge.*
@@ -35,7 +37,9 @@ class ConnectivityModule(private val reactContext: ReactApplicationContext) :
         }
 
         override fun onLost(network: Network) {
-            sendOnlyNetworkStatus()
+            Handler(Looper.getMainLooper()).postDelayed({
+                sendOnlyNetworkStatus()
+            }, 3000) // 3 seconds delay
         }
     }
 
@@ -112,7 +116,7 @@ class ConnectivityModule(private val reactContext: ReactApplicationContext) :
     }
 
     private fun sendOnlyNetworkStatus() {
-        val isMobile = isMobileDataEnabled(reactContext)
+        val isMobile = isInternetAvailable(reactContext)
         Log.d("ConnectivityModule", "Network status: isMobile=$isMobile")
 
         val mobileMap = Arguments.createMap().apply {
@@ -145,11 +149,15 @@ class ConnectivityModule(private val reactContext: ReactApplicationContext) :
         }
     }
 
-    private fun isMobileDataEnabled(context: Context): Boolean {
+    private fun isInternetAvailable(context: Context): Boolean {
         val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
         val capabilities = cm.getNetworkCapabilities(cm.activeNetwork)
-        return capabilities?.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) == true
+
+        return capabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true &&
+                (capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ||
+                        capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR))
     }
+
 
     private fun isLocationEnabled(context: Context): Boolean {
         val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
