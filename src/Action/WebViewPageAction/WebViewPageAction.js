@@ -150,6 +150,9 @@ export const readWebViewMessage = async (event, webViewRef, locationRef, isCamer
             case 'paymentStatus':
                 getPaymentStatusFromApi(webViewRef, msg?.data?.url, msg?.data?.payloadData);
                 break;
+            case 'check-location':
+                checkUserLocation(webViewRef);
+                break;
             default:
                 break;
         }
@@ -391,3 +394,21 @@ const getPaymentStatusFromApi = (webViewRef, url, payloadData) => {
         attempt++;
     }, 6000);
 };
+
+
+const checkUserLocation = async (webViewRef) => {
+    const isLocationEnabled = await DeviceInfo.isLocationEnabled();
+    if (isLocationEnabled) {
+        webViewRef.current?.postMessage(JSON.stringify({
+            type: "Location_Status",
+            status: 'success',
+            data: { isLocationOn: true }
+        }));
+    } else {
+        webViewRef.current?.postMessage(JSON.stringify({
+            type: "Location_Status",
+            status: 'fail',
+            data: { isLocationOn: false }
+        }));
+    }
+}
