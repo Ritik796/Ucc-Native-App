@@ -11,6 +11,7 @@ import com.facebook.react.defaults.DefaultReactHost.getDefaultReactHost
 import com.facebook.react.defaults.DefaultReactNativeHost
 import com.facebook.react.soloader.OpenSourceMergedSoMapping
 import com.facebook.soloader.SoLoader
+import com.wevois.paymentapp.appResumePackage.AppResumePackage
 import com.wevois.paymentapp.connectivityManager.ConnectivityPackage
 
 
@@ -25,6 +26,7 @@ class MainApplication : Application(), ReactApplication {
           add(BackgroundTaskPackage())
           add(TraversalReceiverPackage())
           add(ConnectivityPackage())
+          add(AppResumePackage())
         }
 
       override fun getJSMainModuleName(): String = "index"

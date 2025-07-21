@@ -6,8 +6,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   NativeModules,
-  BackHandler
-
+  BackHandler,
 } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
@@ -34,7 +33,8 @@ const WebViewPage = () => {
   const [bluetoothEvent, setBluetoothEvent] = useState(null);
   const [btConnectionRequest, setBtConnectionRequest] = useState(null);
   const blutoothRef = useRef(false);
-  const refContext = useRef({ traversalUpdate: null, networkStatus: null, locationStatus: null });
+  const isDialogVisible = useRef(false);
+  const refContext = useRef({ traversalUpdate: null, networkStatus: null, locationStatus: null, appStatus: null });
 
 useEffect(() => {
   // Request location permission
@@ -44,7 +44,7 @@ useEffect(() => {
   const subscription = AppState.addEventListener('change', handleAppStateChange);
 
   // Start Android listeners
-  const androidListener = action.listenAndroidMessages(refContext, webViewRef, BackgroundTaskModule, locationRef);
+  const androidListener = action.listenAndroidMessages(refContext, webViewRef, BackgroundTaskModule, locationRef,isDialogVisible);
 
   // Add back button listener
   const backAction = () => {
@@ -63,36 +63,43 @@ useEffect(() => {
   // eslint-disable-next-line
 }, []);
 
+const handleAppStateChange = async nextAppState => {
+  try {
+    const wasInBackground = appState.current.match(/inactive|background/);
+    const isNowActive = nextAppState === 'active';
 
-  const handleAppStateChange = async nextAppState => {
-    isCameraActive.current = false;
-    try {
-      if (
-        appState.current.match(/inactive|background/) ||
-        nextAppState === 'active'
-      ) {
-        if (isCameraActive?.current) {
-          isCameraActive.current = false;
-          return;
-        } else if (blutoothRef?.current) {
-          return;
-        } else {
-          setLoading(true); // Mark as loading
-          setWebKey(prevKey => prevKey + 1); // Delay ensures loading gets shown
-          reconnectBt();
-        }
+    if (wasInBackground || isNowActive) {
+      if (isCameraActive.current) {
+        isCameraActive.current = false;
+        return;
       }
 
-      if (nextAppState.match(/inactive|background/)) {
-        action.stopTracking(locationRef);
-        stopConnectivityListener();
+      if (blutoothRef.current) {
+        return;
       }
 
-      appState.current = nextAppState;
-    } catch (error) {
-      return;
+      if (isDialogVisible.current) {
+        // Skip reload completely
+        return;
+      }
+      // ✅ Reload only if none of the above are active
+      setLoading(true);
+      setWebKey(prevKey => prevKey + 1);
+      reconnectBt();
     }
-  };
+
+    if (nextAppState.match(/inactive|background/)) {
+      action.stopTracking(locationRef);
+      stopConnectivityListener();
+    }
+
+    appState.current = nextAppState;
+  } catch (error) {
+    console.log('App state change error:', error);
+  }
+};
+
+
 
   const handleStopLoading = () => {
     setTimeout(() => setLoading(false), 1000);
@@ -118,7 +125,8 @@ useEffect(() => {
       setBtConnectionRequest,
       setWebData,
       BackgroundTaskModule,
-      blutoothRef
+      blutoothRef,
+      isDialogVisible
     );
   };
   return (
