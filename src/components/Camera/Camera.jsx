@@ -1,6 +1,6 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { Modal, View, Text, TouchableOpacity, Image } from 'react-native';
-import { Camera,useCameraDevice } from 'react-native-vision-camera';
+import { Camera, useCameraDevice } from 'react-native-vision-camera';
 import { cameraStyle as styles } from './CameraStyle';
 import RNFS from 'react-native-fs';
 import ImageResizer from 'react-native-image-resizer';
@@ -43,7 +43,7 @@ const CameraComponent = ({
 
     return async () => {
       console.log('Cleanup: resuming location tracking');
-      await webAction.startLocationTracking(locationRef,webViewRef);
+      await webAction.startLocationTracking(locationRef, webViewRef);
       setCameraOpen(false);
     };
   }, [isVisible]);
@@ -84,33 +84,33 @@ const CameraComponent = ({
     }
   }, [setBase64Image, setLoader]);
 
- const confirmPhoto = async () => {
-  setLoader(true);
-  try {
-    const now = Date.now();
-    if (base64Image && now - lastSent.current > 3000) {
-      lastSent.current = now;
-      const messageData = { type:"image",image: base64Image };
-      webViewRef.current?.postMessage(JSON.stringify(messageData));
-    }
-    // Clean up local files if cameraData exists
-    if (cameraData?.photoUri) {
-      await deleteFile(cameraData.photoUri);
-    }
-    if (cameraData?.resizedUri) {
-      await deleteFile(cameraData.resizedUri);
+  const confirmPhoto = async () => {
+    setLoader(true);
+    try {
+      const now = Date.now();
+      if (base64Image && now - lastSent.current > 3000) {
+        lastSent.current = now;
+        const messageData = { type: "image", image: base64Image };
+        webViewRef.current?.postMessage(JSON.stringify(messageData));
+      }
+      // Clean up local files if cameraData exists
+      if (cameraData?.photoUri) {
+        await deleteFile(cameraData.photoUri);
+      }
+      if (cameraData?.resizedUri) {
+        await deleteFile(cameraData.resizedUri);
+      }
+
+      // Clear stored image data
+      setBase64Image(null);
+      setCameraData({ photoUri: null, resizedUri: null });
+    } catch (error) {
+      console.log('Error during photo confirmation or cleanup:', error);
     }
 
-    // Clear stored image data
-    setBase64Image(null);
-    setCameraData({ photoUri: null, resizedUri: null });
-  } catch (error) {
-    console.log('Error during photo confirmation or cleanup:', error);
-  }
-
-  setLoader(false);
-  handleClose();
-};
+    setLoader(false);
+    handleClose();
+  };
 
 
   const handleClose = () => {
@@ -163,7 +163,7 @@ const CameraComponent = ({
             </View>
 
             <View style={styles.footerBotttom}>
-              <TouchableOpacity style={styles.captureBtn} onPress={handleClose}>
+              <TouchableOpacity style={styles.cancelBtn} onPress={handleClose}>
                 <Text style={styles.captureTxt}>Cancel</Text>
               </TouchableOpacity>
 

@@ -11,8 +11,8 @@ export const cameraStyle = StyleSheet.create({
     flex: 1,
     paddingHorizontal: 1,
     position: "relative",
-    justifyContent:"center",
-    alignContent:"center"
+    justifyContent: "center",
+    alignContent: "center"
 
   },
   header: {
@@ -50,17 +50,17 @@ export const cameraStyle = StyleSheet.create({
     borderWidth: 1,
     overflow: 'hidden',
   },
-loaderOverlay: {
-  position: 'absolute',
-  top: 0,
-  left: 0,
-  right: 0,
-  bottom: 0,
-  justifyContent: 'center',
-  alignItems: 'center',
-  backgroundColor: 'rgba(0,0,0,0.3)', // low opacity to avoid GPU stress
-  zIndex: 999,
-},
+  loaderOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.3)', // low opacity to avoid GPU stress
+    zIndex: 999,
+  },
 
 
   cameraContainer: {
@@ -77,12 +77,22 @@ loaderOverlay: {
   },
 
 
-
-  captureBtn: {
-    backgroundColor: '#2ebf2e',
+  cancelBtn: {
+    backgroundColor: '#f81212ff',
     width: '50%',
     height: 70,
-    borderRadius: 15,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 5,
+    borderColor: 'white',
+    flexDirection: "row"
+  },
+  captureBtn: {
+    backgroundColor: '#1f976f',
+    width: '50%',
+    height: 70,
+    borderRadius: 10,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 5,
