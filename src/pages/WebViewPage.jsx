@@ -15,6 +15,7 @@ import * as action from '../Action/WebViewPageAction/WebViewPageAction';
 import CameraComponent from '../components/Camera/Camera';
 import BluetoothModule from '../components/Bluetooth/BluetoothModule';
 import { reconnectBt } from '../Action/Bluetooth/bluetoothModuleAction';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const WebViewPage = () => {
   const appState = useRef(AppState.currentState);
@@ -65,6 +66,7 @@ useEffect(() => {
 
 const handleAppStateChange = async nextAppState => {
   try {
+    await Promise.all([AsyncStorage.removeItem('userId'), AsyncStorage.removeItem('dbPath')]);
     const wasInBackground = appState.current.match(/inactive|background/);
     const isNowActive = nextAppState === 'active';
 
@@ -157,7 +159,7 @@ const handleAppStateChange = async nextAppState => {
             key={webKey}
             ref={webViewRef}
             onMessage={handleMessage}
-            source={{ uri: 'http://192.168.29.181:3000/' }}
+            source={{ uri: 'https://ucc-payment-app.web.app' }}
             style={{ flex: 1, minHeight: '100%' }} // ✅ Ensure full height
             geolocationEnabled={true}
             mediaPlaybackRequiresUserAction={false}

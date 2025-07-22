@@ -13,11 +13,40 @@ export const requestLocationPermission = async () => {
 
         // Step 1: Request all permissions EXCEPT background location
         const granted = await PermissionsAndroid.requestMultiple([
+            PermissionsAndroid.PERMISSIONS.CAMERA,
+            PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE,
+            PermissionsAndroid.PERMISSIONS.READ_MEDIA_IMAGES,
+            PermissionsAndroid.PERMISSIONS.ACCESS_MEDIA_LOCATION,
             PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
             PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS
         ]);
 
+        if (
+            granted[PermissionsAndroid.PERMISSIONS.CAMERA] !==
+            PermissionsAndroid.RESULTS.GRANTED
+        ) {
+            isPermission = false;
+        }
 
+
+        if (
+            granted[PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE] !==
+            PermissionsAndroid.RESULTS.GRANTED
+        ) {
+            isPermission = false;
+        }
+        if (
+            granted[PermissionsAndroid.PERMISSIONS.READ_MEDIA_IMAGES] !==
+            PermissionsAndroid.RESULTS.GRANTED
+        ) {
+            isPermission = false;
+        }
+        if (
+            granted[PermissionsAndroid.PERMISSIONS.ACCESS_MEDIA_LOCATION] !==
+            PermissionsAndroid.RESULTS.GRANTED
+        ) {
+            isPermission = false;
+        }
         if (
             granted[PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION] !==
             PermissionsAndroid.RESULTS.GRANTED
@@ -109,7 +138,6 @@ export const readWebViewMessage = async (event, webViewRef, locationRef, isCamer
 
                 break;
             case 'openCamera':
-                await requestCamraPermission(isDialogVisible);
                 const isLocationEnabled = await DeviceInfo.isLocationEnabled();
                 if (isLocationEnabled) {
                     isCameraActive.current = true;
@@ -137,6 +165,8 @@ export const readWebViewMessage = async (event, webViewRef, locationRef, isCamer
                 break;
             case 'Logout':
                 StopBackGroundTask(BackgroundTaskModule);
+                await AsyncStorage.removeItem('userId');
+                await AsyncStorage.removeItem('dbPath');
                 break;
             case 'Exit_App':
                 handleExitApp();
@@ -246,55 +276,7 @@ const handleExitApp = () => {
     BackHandler.exitApp();
 };
 
-const requestCamraPermission = async (isDialogVisible) => {
-    try {
-        if (Platform.OS !== "android") return true; // iOS handled differently
 
-        let isPermission = true;
-        isDialogVisible.current = true; // Reset dialog visibility
-        // Step 1: Request all permissions EXCEPT background location
-        const granted = await PermissionsAndroid.requestMultiple([
-            PermissionsAndroid.PERMISSIONS.CAMERA,
-            PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE,
-            PermissionsAndroid.PERMISSIONS.READ_MEDIA_IMAGES,
-            PermissionsAndroid.PERMISSIONS.ACCESS_MEDIA_LOCATION,
-
-        ]);
-
-        if (
-            granted[PermissionsAndroid.PERMISSIONS.CAMERA] !==
-            PermissionsAndroid.RESULTS.GRANTED
-        ) {
-            isPermission = false;
-        }
-
-
-        if (
-            granted[PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE] !==
-            PermissionsAndroid.RESULTS.GRANTED
-        ) {
-            isPermission = false;
-        }
-        if (
-            granted[PermissionsAndroid.PERMISSIONS.READ_MEDIA_IMAGES] !==
-            PermissionsAndroid.RESULTS.GRANTED
-        ) {
-            isPermission = false;
-        }
-        if (
-            granted[PermissionsAndroid.PERMISSIONS.ACCESS_MEDIA_LOCATION] !==
-            PermissionsAndroid.RESULTS.GRANTED
-        ) {
-            isPermission = false;
-        }
-
-        isDialogVisible.current = false; // Reset dialog visibility
-        return isPermission;
-    } catch (err) {
-        console.warn("Permission error:", err);
-        return false;
-    }
-};
 
 const sendPaymentRequestToUrl = async (paymentPayload, url, webViewRef) => {
     try {
@@ -411,4 +393,4 @@ const checkUserLocation = async (webViewRef) => {
             data: { isLocationOn: false }
         }));
     }
-}
+};
