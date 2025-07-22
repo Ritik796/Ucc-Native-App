@@ -165,6 +165,7 @@ export const readWebViewMessage = async (event, webViewRef, locationRef, isCamer
                 break;
             case 'Logout':
                 StopBackGroundTask(BackgroundTaskModule);
+                stopLocationTracking(locationRef,setWebData)
                 await AsyncStorage.removeItem('userId');
                 await AsyncStorage.removeItem('dbPath');
                 break;
