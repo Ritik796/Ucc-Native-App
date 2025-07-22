@@ -14,6 +14,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import android.widget.Toast
 import com.facebook.react.HeadlessJsTaskService
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.jstasks.HeadlessJsTaskConfig
@@ -78,7 +79,7 @@ class MyTaskService : HeadlessJsTaskService() {
             .setMinUpdateIntervalMillis(5000L)
             .setMinUpdateDistanceMeters(2f)
             .build()
-
+        Toast.makeText(reactContext, "Location Tracking start", Toast.LENGTH_SHORT).show()
         fusedLocationClient.lastLocation.addOnSuccessListener { location ->
             location?.let {
                 if (it.accuracy <= 15) {
@@ -190,8 +191,9 @@ class MyTaskService : HeadlessJsTaskService() {
 
         val receivers = packageManager.queryBroadcastReceivers(intent, 0)
         Log.d("BroadcastCheck", "Found ${receivers.size} receivers for TRAVERSAL_HISTORY")
-
+        Toast.makeText(reactContext, "Sending Location to web view", Toast.LENGTH_SHORT).show()
         sendBroadcast(intent)
+        Toast.makeText(reactContext, "Location Send", Toast.LENGTH_SHORT).show()
     }
 
     private fun getDistance(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {

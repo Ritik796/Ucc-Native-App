@@ -16,6 +16,7 @@ import android.util.Log
 import androidx.core.content.ContextCompat
 import com.facebook.react.bridge.*
 import com.facebook.react.modules.core.DeviceEventManagerModule
+import java.util.Calendar
 
 class ConnectivityModule(private val reactContext: ReactApplicationContext) :
     ReactContextBaseJavaModule(reactContext) {
@@ -171,7 +172,44 @@ class ConnectivityModule(private val reactContext: ReactApplicationContext) :
         register()
         sendInitialStatusToJS() // <-- Send immediately on JS call too
     }
+    private val handler = Handler(Looper.getMainLooper())
+    private var runnable: Runnable? = null
+    private fun startTimeChecker() {
 
+
+        runnable = object : Runnable {
+            override fun run() {
+                val calendar = Calendar.getInstance()
+                val hour = calendar.get(Calendar.HOUR_OF_DAY)
+                val minute = calendar.get(Calendar.MINUTE)
+
+                if (hour == 23 && minute == 0) {
+                    stopMonitoring()
+                    stopTimeChecker()
+                }
+
+                handler.postDelayed(this, 60_000)
+            }
+        }
+
+        handler.postDelayed(runnable!!, getDelayToNextMinute())
+    }
+
+    private fun getDelayToNextMinute(): Long {
+        val now = Calendar.getInstance()
+        val nextMinute = (now.clone() as Calendar).apply {
+            add(Calendar.MINUTE, 1)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
+        return nextMinute.timeInMillis - now.timeInMillis
+    }
+
+
+    private fun stopTimeChecker() {
+        runnable?.let { handler.removeCallbacks(it) }
+        runnable = null
+    }
     @ReactMethod
     fun stopMonitoring() {
         Log.d("Connection Listener", "Ended")

@@ -13,6 +13,8 @@ import java.util.Calendar
 
 class BackgroundTaskModule(reactContext: ReactApplicationContext) :
     ReactContextBaseJavaModule(reactContext) {
+    private var lastStartTime = 0L
+    private val MIN_START_INTERVAL = 10_000L // 10 seconds
 
     override fun getName(): String {
         return "BackgroundTaskModule"
@@ -21,21 +23,21 @@ class BackgroundTaskModule(reactContext: ReactApplicationContext) :
     @SuppressLint("NewApi")
     @ReactMethod
     fun startBackgroundTask(options: ReadableMap) {
+        val currentTime = System.currentTimeMillis()
+        if (currentTime - lastStartTime < MIN_START_INTERVAL) {
+            Log.d("BackgroundTaskModule", "Start request ignored due to cooldown")
+            return
+        }
+        lastStartTime = currentTime
+
         val context = reactApplicationContext
         val userId = if (options.hasKey("USER_ID")) options.getString("USER_ID") else null
         val dbPath = if (options.hasKey("DB_PATH")) options.getString("DB_PATH") else null
 
-        Log.d("BackgroundTaskModule", "Received USER_ID: $userId")
-        Log.d("BackgroundTaskModule", "Received DB_PATH: $dbPath")
-
         if (userId.isNullOrEmpty() || dbPath.isNullOrEmpty()) {
-//            Toast.makeText(context, "USER_ID or DB_PATH is missing", Toast.LENGTH_SHORT).show()
             Log.e("BackgroundTaskModule", "Missing USER_ID or DB_PATH")
             return
         }
-
-//        Toast.makeText(context, "Background Service Started", Toast.LENGTH_SHORT).show()
-        Log.i("BackgroundTaskModule", "Starting MyTaskService with USER_ID: $userId and DB_PATH: $dbPath")
 
         val serviceIntent = Intent(context, MyTaskService::class.java).apply {
             putExtra("USER_ID", userId)
@@ -46,6 +48,7 @@ class BackgroundTaskModule(reactContext: ReactApplicationContext) :
         startTimeChecker()
         Log.d("BackgroundTaskModule", "startForegroundService called")
     }
+
 
     @ReactMethod
     fun stopBackgroundTask() {

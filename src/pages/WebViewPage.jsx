@@ -7,6 +7,7 @@ import {
   Platform,
   NativeModules,
   BackHandler,
+  DeviceEventEmitter,
 } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
@@ -37,82 +38,92 @@ const WebViewPage = () => {
   const isDialogVisible = useRef(false);
   const refContext = useRef({ traversalUpdate: null, networkStatus: null, locationStatus: null, appStatus: null });
 
-useEffect(() => {
-  // Request location permission
-  action.requestLocationPermission();
+  useEffect(() => {
+    // Request location permission
+    action.requestLocationPermission();
+      startConnectivityListener();
 
-  // Add AppState change listener
-  const subscription = AppState.addEventListener('change', handleAppStateChange);
+    // Add AppState change listener
+    const subscription = AppState.addEventListener('change', handleAppStateChange);
 
-  // Start Android listeners
-  const androidListener = action.listenAndroidMessages(refContext, webViewRef, BackgroundTaskModule, locationRef,isDialogVisible);
+    // Start Android listeners
+    const androidListener = action.listenAndroidMessages(refContext, webViewRef, BackgroundTaskModule, locationRef, isDialogVisible);
 
-  // Add back button listener
-  const backAction = () => {
-    webViewRef.current?.postMessage(JSON.stringify({ type: "EXIT_REQUEST" }));
-    return true;
-  };
-  const backHandler = BackHandler.addEventListener("hardwareBackPress", backAction);
+    // Add back button listener
+    const backAction = () => {
+      webViewRef.current?.postMessage(JSON.stringify({ type: "EXIT_REQUEST" }));
+      return true;
+    };
+    const backHandler = BackHandler.addEventListener("hardwareBackPress", backAction);
 
-  // Cleanup
-  return () => {
-    subscription.remove();
-    androidListener(); // cleanup Android listeners
-    backHandler.remove();
-  };
+    // Cleanup
+    return () => {
+      subscription.remove();
+      androidListener(); // cleanup Android listeners
+      backHandler.remove();
+    };
 
-  // eslint-disable-next-line
-}, []);
+    // eslint-disable-next-line
+  }, []);
+  useEffect(() => {
+    const subscription = DeviceEventEmitter.addListener(
+      'onTraversalUpdate',
+      history => {
+        handleSaveTraversalHistory(history);
+      }
+    );
+    return () => {
+      subscription.remove();
+    };
+  }, []);
+  const handleAppStateChange = async nextAppState => {
+    try {
+      const wasInBackground = appState.current.match(/inactive|background/);
+      const isNowActive = nextAppState === 'active';
 
-const handleAppStateChange = async nextAppState => {
-  try {
-    const wasInBackground = appState.current.match(/inactive|background/);
-    const isNowActive = nextAppState === 'active';
+      if (wasInBackground || isNowActive) {
+        if (isCameraActive.current) {
+          isCameraActive.current = false;
+          return;
+        }
 
-    if (wasInBackground || isNowActive) {
-      if (isCameraActive.current) {
-        isCameraActive.current = false;
-        return;
+        if (blutoothRef.current) {
+          return;
+        }
+
+        if (isDialogVisible.current) {
+          // Skip reload completely
+          return;
+        }
+        // ✅ Reload only if none of the above are active
+        setLoading(true);
+        setWebKey(prevKey => prevKey + 1);
+        reconnectBt();
       }
 
-      if (blutoothRef.current) {
-        return;
+      if (nextAppState.match(/inactive|background/)) {
+        action.stopTracking(locationRef);
       }
 
-      if (isDialogVisible.current) {
-        // Skip reload completely
-        return;
-      }
-      // ✅ Reload only if none of the above are active
-      setLoading(true);
-      setWebKey(prevKey => prevKey + 1);
-      reconnectBt();
+      appState.current = nextAppState;
+    } catch (error) {
+      console.log('App state change error:', error);
     }
+  };
 
-    if (nextAppState.match(/inactive|background/)) {
-      action.stopTracking(locationRef);
-      stopConnectivityListener();
-    }
-
-    appState.current = nextAppState;
-  } catch (error) {
-    console.log('App state change error:', error);
-  }
-};
-
-
+  const handleSaveTraversalHistory = (history) => {
+    action.startSavingTraversalHistory(history);
+  };
 
   const handleStopLoading = () => {
     setTimeout(() => setLoading(false), 1000);
-    startConnectivityListener();
+  
 
   };
   const startConnectivityListener = () => {
     ConnectivityModule.startMonitoring();
   };
-  const stopConnectivityListener = () => {
-    ConnectivityModule.stopMonitoring();
-  };
+
 
   const handleMessage = event => {
     action.readWebViewMessage(
