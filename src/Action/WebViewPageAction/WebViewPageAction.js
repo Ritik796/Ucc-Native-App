@@ -176,10 +176,10 @@ export const readWebViewMessage = async (event, webViewRef, locationRef, isCamer
                 // console.log(msg.type, msg.data)
                 break;
             case 'payment':
-                sendPaymentRequestToUrl(msg?.data?.paymentData, msg?.data?.url, webViewRef);
+                sendPaymentRequestToUrl(msg?.data?.paymentData, msg?.data?.url, msg?.data?.deviceType, webViewRef);
                 break;
             case 'paymentStatus':
-                getPaymentStatusFromApi(webViewRef, msg?.data?.url, msg?.data?.payloadData);
+                getPaymentStatusFromApi(webViewRef, msg?.data?.url, msg?.data?.payloadData, msg?.data?.deviceType);
                 break;
             case 'check-location':
                 checkUserLocation(webViewRef);
@@ -277,21 +277,41 @@ const handleExitApp = () => {
     BackHandler.exitApp();
 };
 
-
-
-const sendPaymentRequestToUrl = async (paymentPayload, url, webViewRef) => {
+const sendPaymentRequestToUrl = async (paymentPayload, url, deviceType, webViewRef) => {
     try {
         const response = await axios.post(url, paymentPayload, {
             headers: { 'Content-Type': 'application/json' }
         });
         let injectedJS;
         if (response.status === 200 && response.data) {
+            let responseData;
+            if (deviceType === 'pine') {
+                responseData = { ...response?.data, deviceType: deviceType }
+            } else if (deviceType === 'orange') {
+                if (response?.data?.ResponseCode === '00' && response?.data?.ResponseDesc === 'Success') {
+                    responseData = {
+                        ...response?.data,
+                        ResponseCode: 0,
+                        ResponseMessage: 'APPROVED',
+                        deviceType: deviceType
+                    }
+                } else {
+                    responseData = {
+                        ...response?.data,
+                        ResponseCode: Number(response?.data?.ResponseCode),
+                        ResponseMessage: response?.data?.ResponseDesc,
+                        deviceType: deviceType
+                    }
+                }
+
+            }
+            console.log(responseData)
             injectedJS = `
             window.dispatchEvent(new MessageEvent('message', {
                 data: JSON.stringify({
                     type: 'payment-success',
                     status: 'success',
-                    data: ${JSON.stringify(response.data)}
+                    data: ${JSON.stringify(responseData)}
                 })
             }));
         `;
@@ -322,37 +342,44 @@ const sendPaymentRequestToUrl = async (paymentPayload, url, webViewRef) => {
 };
 
 
-const getPaymentStatusFromApi = (webViewRef, url, payloadData) => {
+const getPaymentStatusFromApi = (webViewRef, url, payloadData, deviceType) => {
+    console.log('url, payloadData:', url, payloadData, deviceType)
     let attempt = 1;
     const interval = setInterval(async () => {
         try {
             const response = await axios.post(url, payloadData, {
                 headers: { 'Content-Type': 'application/json' }
             });
-            // console.log('Payment Status Response:', response?.data);
+            console.log('Payment Status Response:', response?.data);
 
-            const { ResponseCode, ResponseMessage } = response.data;
+            let responseData;
+            const { ResponseCode } = response.data;
             const code = Number(ResponseCode);
-
+            if (deviceType === 'orange') {
+                responseData = { ...response?.data, ResponseMessage: response?.data?.ResponseDesc }
+            } else {
+                responseData = { ...response?.data }
+            }
+            console.log('responseData:', responseData);
             if (code === 0) {
                 // console.log('✅ Payment Success');
                 const successJS = `
                 window.dispatchEvent(new MessageEvent('message', {
                     data: JSON.stringify({
                         type: 'paymentStatus-success',
-                        data: ${JSON.stringify(response.data)}
+                        data: ${JSON.stringify(responseData)}
                     })
                 }));
             `;
                 webViewRef.current?.injectJavaScript(successJS);
                 clearInterval(interval);
-            } else if (code === 1 || code === 1052) {
+            } else if (code === 1 || code === 1052 || code === 2) {
                 // console.log('❌ Payment Failed');
                 const failJS = `
                 window.dispatchEvent(new MessageEvent('message', {
                     data: JSON.stringify({
                         type: 'paymentStatus-error',
-                        message: ${JSON.stringify(ResponseMessage)}
+                        message:${JSON.stringify(responseData?.ResponseMessage)}
                     })
                 }));
             `;
@@ -377,6 +404,105 @@ const getPaymentStatusFromApi = (webViewRef, url, payloadData) => {
         attempt++;
     }, 6000);
 };
+
+// const sendPaymentRequestToUrl = async (paymentPayload, url, webViewRef) => {
+//     try {
+//         const response = await axios.post(url, paymentPayload, {
+//             headers: { 'Content-Type': 'application/json' }
+//         });
+//         let injectedJS;
+//         if (response.status === 200 && response.data) {
+//             injectedJS = `
+//             window.dispatchEvent(new MessageEvent('message', {
+//                 data: JSON.stringify({
+//                     type: 'payment-success',
+//                     status: 'success',
+//                     data: ${JSON.stringify(response.data)}
+//                 })
+//             }));
+//         `;
+//         } else {
+//             injectedJS = `
+//             window.dispatchEvent(new MessageEvent('message', {
+//                 data: JSON.stringify({
+//                     type: 'payment-error',
+//                     status: 'fail',
+//                     data: ${JSON.stringify(response.data)}
+//                 })
+//             }));
+//         `;
+//         }
+//         webViewRef.current?.injectJavaScript(injectedJS);
+
+//     } catch (error) {
+//         const errorJS = `
+//             window.dispatchEvent(new MessageEvent('message', {
+//                 data: JSON.stringify({
+//                     type: 'payment-catch-error',
+//                     error: ${JSON.stringify(error.message)}
+//                 })
+//             }));
+//         `;
+//         webViewRef.current?.injectJavaScript(errorJS);
+//     }
+// };
+
+
+// const getPaymentStatusFromApi = (webViewRef, url, payloadData) => {
+//     let attempt = 1;
+//     const interval = setInterval(async () => {
+//         try {
+//             const response = await axios.post(url, payloadData, {
+//                 headers: { 'Content-Type': 'application/json' }
+//             });
+//             // console.log('Payment Status Response:', response?.data);
+
+//             const { ResponseCode, ResponseMessage } = response.data;
+//             const code = Number(ResponseCode);
+
+//             if (code === 0) {
+//                 // console.log('✅ Payment Success');
+//                 const successJS = `
+//                 window.dispatchEvent(new MessageEvent('message', {
+//                     data: JSON.stringify({
+//                         type: 'paymentStatus-success',
+//                         data: ${JSON.stringify(response.data)}
+//                     })
+//                 }));
+//             `;
+//                 webViewRef.current?.injectJavaScript(successJS);
+//                 clearInterval(interval);
+//             } else if (code === 1 || code === 1052) {
+//                 // console.log('❌ Payment Failed');
+//                 const failJS = `
+//                 window.dispatchEvent(new MessageEvent('message', {
+//                     data: JSON.stringify({
+//                         type: 'paymentStatus-error',
+//                         message: ${JSON.stringify(ResponseMessage)}
+//                     })
+//                 }));
+//             `;
+//                 webViewRef.current?.injectJavaScript(failJS);
+//                 clearInterval(interval);
+//             } else {
+//                 // console.log(`⚠️ Retry after 6 sec... ResponseCode=${code}`);
+//             }
+//         } catch (error) {
+//             // console.log('❌ Error fetching payment status:', error.message);
+//             const errorJS = `
+//                 window.dispatchEvent(new MessageEvent('message', {
+//                     data: JSON.stringify({
+//                         type: 'paymentStatus-catch-error',
+//                         message: ${JSON.stringify(error.message)}
+//                     })
+//                 }));
+//             `;
+//             webViewRef.current?.injectJavaScript(errorJS);
+//             clearInterval(interval);
+//         }
+//         attempt++;
+//     }, 6000);
+// };
 
 
 const checkUserLocation = async (webViewRef) => {
