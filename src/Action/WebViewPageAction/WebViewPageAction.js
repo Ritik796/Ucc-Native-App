@@ -210,7 +210,7 @@ export const listenAndroidMessages = (refContext, webViewRef, BackgroundTaskModu
     refContext.current.traversalUpdate = DeviceEventEmitter.addListener(
         'onTraversalUpdate',
         history => {
-            // startSavingTraversalHistory(history);
+            startSavingTraversalHistory(history);
         }
     );
 

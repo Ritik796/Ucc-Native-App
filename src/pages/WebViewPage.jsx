@@ -66,7 +66,6 @@ useEffect(() => {
 
 const handleAppStateChange = async nextAppState => {
   try {
-    await Promise.all([AsyncStorage.removeItem('userId'), AsyncStorage.removeItem('dbPath')]);
     const wasInBackground = appState.current.match(/inactive|background/);
     const isNowActive = nextAppState === 'active';
 
