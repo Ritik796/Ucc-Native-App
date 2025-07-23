@@ -165,7 +165,7 @@ export const readWebViewMessage = async (event, webViewRef, locationRef, isCamer
                 break;
             case 'Logout':
                 StopBackGroundTask(BackgroundTaskModule);
-                stopLocationTracking(locationRef,setWebData)
+                stopLocationTracking(locationRef, setWebData)
                 await AsyncStorage.removeItem('userId');
                 await AsyncStorage.removeItem('dbPath');
                 break;
@@ -218,7 +218,7 @@ export const listenAndroidMessages = (refContext, webViewRef, BackgroundTaskModu
     refContext.current.networkStatus = DeviceEventEmitter.addListener(
         'onConnectivityStatus',
         mobile => {
-            console.log('mobile',mobile)
+            console.log('mobile', mobile)
 
             sendNetWorkStatus(mobile, webViewRef);
         }
@@ -306,7 +306,7 @@ const sendPaymentRequestToUrl = async (paymentPayload, url, deviceType, webViewR
                 }
 
             }
-            console.log(responseData)
+            // console.log(responseData)
             injectedJS = `
             window.dispatchEvent(new MessageEvent('message', {
                 data: JSON.stringify({
@@ -344,14 +344,15 @@ const sendPaymentRequestToUrl = async (paymentPayload, url, deviceType, webViewR
 
 
 const getPaymentStatusFromApi = (webViewRef, url, payloadData, deviceType) => {
-    console.log('url, payloadData:', url, payloadData, deviceType)
+    // console.log('url, payloadData:', url, payloadData, deviceType)
     let attempt = 1;
+    const maxAttempts = 35;
     const interval = setInterval(async () => {
         try {
             const response = await axios.post(url, payloadData, {
                 headers: { 'Content-Type': 'application/json' }
             });
-            console.log('Payment Status Response:', response?.data);
+            // console.log('Payment Status Response:', response?.data);
 
             let responseData;
             const { ResponseCode } = response.data;
@@ -361,7 +362,7 @@ const getPaymentStatusFromApi = (webViewRef, url, payloadData, deviceType) => {
             } else {
                 responseData = { ...response?.data }
             }
-            console.log('responseData:', responseData);
+            // console.log('responseData:', responseData);
             if (code === 0) {
                 // console.log('✅ Payment Success');
                 const successJS = `
@@ -403,6 +404,19 @@ const getPaymentStatusFromApi = (webViewRef, url, payloadData, deviceType) => {
             clearInterval(interval);
         }
         attempt++;
+        if (attempt > maxAttempts) {
+            console.warn('Max payment status attempts reached, stopping polling.');
+            const errorJS = `
+                window.dispatchEvent(new MessageEvent('message', {
+                    data: JSON.stringify({
+                        type: 'paymentStatus-catch-error',
+                        message: 'Transaction Timeout'
+                    })
+                }));
+            `;
+            webViewRef.current?.injectJavaScript(errorJS);
+            clearInterval(interval);
+        }
     }, 6000);
 };
 
