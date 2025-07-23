@@ -194,7 +194,6 @@ class ConnectivityModule(private val reactContext: ReactApplicationContext) :
 
         handler.postDelayed(runnable!!, getDelayToNextMinute())
     }
-
     private fun getDelayToNextMinute(): Long {
         val now = Calendar.getInstance()
         val nextMinute = (now.clone() as Calendar).apply {

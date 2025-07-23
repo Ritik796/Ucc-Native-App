@@ -40,8 +40,8 @@ const WebViewPage = () => {
 
   useEffect(() => {
     // Request location permission
+    startConnectivityListener();
     action.requestLocationPermission();
-      startConnectivityListener();
 
     // Add AppState change listener
     const subscription = AppState.addEventListener('change', handleAppStateChange);
@@ -103,6 +103,7 @@ const WebViewPage = () => {
 
       if (nextAppState.match(/inactive|background/)) {
         action.stopTracking(locationRef);
+        stopConnectivityListener();
       }
 
       appState.current = nextAppState;
@@ -117,11 +118,15 @@ const WebViewPage = () => {
 
   const handleStopLoading = () => {
     setTimeout(() => setLoading(false), 1000);
+    startConnectivityListener()
   
 
   };
   const startConnectivityListener = () => {
     ConnectivityModule.startMonitoring();
+  };
+  const stopConnectivityListener = () => {
+    ConnectivityModule.stopMonitoring();
   };
 
 

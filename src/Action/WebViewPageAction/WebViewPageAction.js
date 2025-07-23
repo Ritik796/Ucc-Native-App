@@ -218,6 +218,7 @@ export const listenAndroidMessages = (refContext, webViewRef, BackgroundTaskModu
     refContext.current.networkStatus = DeviceEventEmitter.addListener(
         'onConnectivityStatus',
         mobile => {
+            console.log('mobile',mobile)
 
             sendNetWorkStatus(mobile, webViewRef);
         }
