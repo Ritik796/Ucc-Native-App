@@ -358,7 +358,7 @@ const getPaymentStatusFromApi = (webViewRef, url, payloadData, deviceType) => {
             const { ResponseCode } = response.data;
             const code = Number(ResponseCode);
             if (deviceType === 'orange') {
-                responseData = { ...response?.data, ResponseMessage: response?.data?.ResponseDesc }
+                responseData = { ...response?.data, ResponseCode: code, ResponseMessage: response?.data?.ResponseDesc }
             } else {
                 responseData = { ...response?.data }
             }
@@ -419,106 +419,6 @@ const getPaymentStatusFromApi = (webViewRef, url, payloadData, deviceType) => {
         }
     }, 6000);
 };
-
-// const sendPaymentRequestToUrl = async (paymentPayload, url, webViewRef) => {
-//     try {
-//         const response = await axios.post(url, paymentPayload, {
-//             headers: { 'Content-Type': 'application/json' }
-//         });
-//         let injectedJS;
-//         if (response.status === 200 && response.data) {
-//             injectedJS = `
-//             window.dispatchEvent(new MessageEvent('message', {
-//                 data: JSON.stringify({
-//                     type: 'payment-success',
-//                     status: 'success',
-//                     data: ${JSON.stringify(response.data)}
-//                 })
-//             }));
-//         `;
-//         } else {
-//             injectedJS = `
-//             window.dispatchEvent(new MessageEvent('message', {
-//                 data: JSON.stringify({
-//                     type: 'payment-error',
-//                     status: 'fail',
-//                     data: ${JSON.stringify(response.data)}
-//                 })
-//             }));
-//         `;
-//         }
-//         webViewRef.current?.injectJavaScript(injectedJS);
-
-//     } catch (error) {
-//         const errorJS = `
-//             window.dispatchEvent(new MessageEvent('message', {
-//                 data: JSON.stringify({
-//                     type: 'payment-catch-error',
-//                     error: ${JSON.stringify(error.message)}
-//                 })
-//             }));
-//         `;
-//         webViewRef.current?.injectJavaScript(errorJS);
-//     }
-// };
-
-
-// const getPaymentStatusFromApi = (webViewRef, url, payloadData) => {
-//     let attempt = 1;
-//     const interval = setInterval(async () => {
-//         try {
-//             const response = await axios.post(url, payloadData, {
-//                 headers: { 'Content-Type': 'application/json' }
-//             });
-//             // console.log('Payment Status Response:', response?.data);
-
-//             const { ResponseCode, ResponseMessage } = response.data;
-//             const code = Number(ResponseCode);
-
-//             if (code === 0) {
-//                 // console.log('✅ Payment Success');
-//                 const successJS = `
-//                 window.dispatchEvent(new MessageEvent('message', {
-//                     data: JSON.stringify({
-//                         type: 'paymentStatus-success',
-//                         data: ${JSON.stringify(response.data)}
-//                     })
-//                 }));
-//             `;
-//                 webViewRef.current?.injectJavaScript(successJS);
-//                 clearInterval(interval);
-//             } else if (code === 1 || code === 1052) {
-//                 // console.log('❌ Payment Failed');
-//                 const failJS = `
-//                 window.dispatchEvent(new MessageEvent('message', {
-//                     data: JSON.stringify({
-//                         type: 'paymentStatus-error',
-//                         message: ${JSON.stringify(ResponseMessage)}
-//                     })
-//                 }));
-//             `;
-//                 webViewRef.current?.injectJavaScript(failJS);
-//                 clearInterval(interval);
-//             } else {
-//                 // console.log(`⚠️ Retry after 6 sec... ResponseCode=${code}`);
-//             }
-//         } catch (error) {
-//             // console.log('❌ Error fetching payment status:', error.message);
-//             const errorJS = `
-//                 window.dispatchEvent(new MessageEvent('message', {
-//                     data: JSON.stringify({
-//                         type: 'paymentStatus-catch-error',
-//                         message: ${JSON.stringify(error.message)}
-//                     })
-//                 }));
-//             `;
-//             webViewRef.current?.injectJavaScript(errorJS);
-//             clearInterval(interval);
-//         }
-//         attempt++;
-//     }, 6000);
-// };
-
 
 const checkUserLocation = async (webViewRef) => {
     const isLocationEnabled = await DeviceInfo.isLocationEnabled();
