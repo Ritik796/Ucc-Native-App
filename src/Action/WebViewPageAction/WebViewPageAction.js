@@ -203,18 +203,10 @@ export const startSavingTraversalHistory = async (history) => {
 
 
 export const listenAndroidMessages = (refContext, webViewRef, BackgroundTaskModule, locationRef, isDialogVisible) => {
-    refContext.current.traversalUpdate = DeviceEventEmitter.addListener(
-        'onTraversalUpdate',
-        history => {
-            // startSavingTraversalHistory(history);
-        }
-    );
-
+  
     refContext.current.networkStatus = DeviceEventEmitter.addListener(
         'onConnectivityStatus',
         mobile => {
-            console.log('mobile', mobile)
-
             sendNetWorkStatus(mobile, webViewRef);
         }
     );
@@ -225,6 +217,7 @@ export const listenAndroidMessages = (refContext, webViewRef, BackgroundTaskModu
 
             sendLocationStatus(location, webViewRef, locationRef);
         }
+
     );
     refContext.current.appStatus = DeviceEventEmitter.addListener(
         'onSystemDialogStatus',
@@ -240,7 +233,6 @@ export const listenAndroidMessages = (refContext, webViewRef, BackgroundTaskModu
 
 
     return () => {
-        refContext?.current?.traversalUpdate?.remove();
         refContext?.current?.networkStatus?.remove();
         refContext?.current?.locationStatus?.remove();
         refContext?.current?.appStatus?.remove();
