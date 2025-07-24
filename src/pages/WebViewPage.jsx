@@ -37,11 +37,12 @@ const WebViewPage = () => {
   const [netWorkError, setNetWorkError] = useState(false);
   const blutoothRef = useRef(false);
   const isDialogVisible = useRef(false);
+  const isPaymentProcess = useRef(false);
   const refContext = useRef({ traversalUpdate: null, networkStatus: null, locationStatus: null, appStatus: null });
 
   useEffect(() => {
     // Request location permission
-    startConnectivityListener();
+
     action.requestLocationPermission();
 
     // Add AppState change listener
@@ -66,11 +67,12 @@ const WebViewPage = () => {
 
     // eslint-disable-next-line
   }, []);
+  
   useEffect(() => {
     const subscription = DeviceEventEmitter.addListener(
       'onTraversalUpdate',
       history => {
-        handleSaveTraversalHistory(history);
+        // handleSaveTraversalHistory(history);
       }
     );
     return () => {
@@ -83,6 +85,9 @@ const WebViewPage = () => {
       const isNowActive = nextAppState === 'active';
 
       if (wasInBackground || isNowActive) {
+        if (isNowActive) {
+          startConnectivityListener();
+        }
         if (isCameraActive.current) {
           isCameraActive.current = false;
           return;
@@ -97,6 +102,9 @@ const WebViewPage = () => {
           return;
         }
         if (netWorkError) {
+          return;
+        }
+        if (isPaymentProcess.current) {
           return;
         }
         // ✅ Reload only if none of the above are active
@@ -118,7 +126,7 @@ const WebViewPage = () => {
   };
 
   const handleSaveTraversalHistory = (history) => {
-    action.startSavingTraversalHistory(history);
+    // action.startSavingTraversalHistory(history);
   };
 
   const handleStopLoading = () => {
@@ -152,7 +160,7 @@ const WebViewPage = () => {
       setWebData,
       BackgroundTaskModule,
       blutoothRef,
-      isDialogVisible
+      isPaymentProcess
     );
   };
   return (
@@ -184,7 +192,7 @@ const WebViewPage = () => {
             key={webKey}
             ref={webViewRef}
             onMessage={handleMessage}
-            source={{ uri: 'http:/192.168.157.144:3000' }}
+            source={{ uri: 'http://192.168.157.144:3000' }}
             style={{ flex: 1, minHeight: '100%' }} // ✅ Ensure full height
             geolocationEnabled={true}
             mediaPlaybackRequiresUserAction={false}

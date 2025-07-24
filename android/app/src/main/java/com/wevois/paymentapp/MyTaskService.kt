@@ -85,7 +85,7 @@ class MyTaskService : HeadlessJsTaskService() {
             .setMinUpdateDistanceMeters(2f)
             .build()
 
-        Toast.makeText(reactContext, "Location Tracking start", Toast.LENGTH_SHORT).show()
+//        Toast.makeText(reactContext, "Location Tracking start", Toast.LENGTH_SHORT).show()
 
         fusedLocationClient.lastLocation.addOnSuccessListener { location ->
             location?.let {
@@ -235,10 +235,10 @@ class MyTaskService : HeadlessJsTaskService() {
         }
 
         intent.putExtra("travel_history", jsonObject.toString())
-        Toast.makeText(reactContext, "Sending Location to web view", Toast.LENGTH_SHORT).show()
+//        Toast.makeText(reactContext, "Sending Location to web view", Toast.LENGTH_SHORT).show()
         sendBroadcast(intent)
         Log.d("Broadcast", "Traversal history sent: $jsonObject")
-        Toast.makeText(reactContext, "Location Send", Toast.LENGTH_SHORT).show()
+//        Toast.makeText(reactContext, "Location Send", Toast.LENGTH_SHORT).show()
     }
 
     private fun getDistance(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {

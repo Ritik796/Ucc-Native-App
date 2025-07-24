@@ -127,7 +127,7 @@ export const stopTracking = async (locationRef) => {
     }
 };
 
-export const readWebViewMessage = async (event, webViewRef, locationRef, isCameraActive, setShowCamera, setIsVisible, setBluetoothEvent, setBtConnectionRequest, setWebData, BackgroundTaskModule, blutoothRef, isDialogVisible) => {
+export const readWebViewMessage = async (event, webViewRef, locationRef, isCameraActive, setShowCamera, setIsVisible, setBluetoothEvent, setBtConnectionRequest, setWebData, BackgroundTaskModule, blutoothRef,isPaymentProcess) => {
     let data = event?.nativeEvent?.data;
     try {
         let msg = JSON.parse(data);
@@ -171,7 +171,13 @@ export const readWebViewMessage = async (event, webViewRef, locationRef, isCamer
                 // console.log(msg.type, msg.data)
                 break;
             case 'payment':
+                isPaymentProcess.current = true;
                 sendPaymentRequestToUrl(msg?.data?.paymentData, msg?.data?.url, msg?.data?.deviceType, webViewRef);
+                break;
+            case 'Payment_Process_Done':
+                setTimeout(() => {
+                    isPaymentProcess.current = false;
+                }, 2000);
                 break;
             case 'paymentStatus':
                 getPaymentStatusFromApi(webViewRef, msg?.data?.url, msg?.data?.payloadData, msg?.data?.deviceType);

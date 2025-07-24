@@ -115,10 +115,10 @@ const CameraComponent = ({
 
   const handleClose = () => {
     setCameraOpen(false);
-    setShowPreview(false);
     setTimeout(() => {
       setShowCamera(false);
       setIsVisible(false);
+      setShowPreview(false);
     }, 300);
   };
 
