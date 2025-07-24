@@ -3,7 +3,6 @@ import { PermissionsAndroid, Platform, DeviceEventEmitter, BackHandler } from "r
 import Geolocation from "@react-native-community/geolocation";
 import DeviceInfo from "react-native-device-info";
 import * as locationService from '../../Services/LocationServices';
-import AsyncStorage from "@react-native-async-storage/async-storage";
 
 export const requestLocationPermission = async () => {
     try {
@@ -160,14 +159,10 @@ export const readWebViewMessage = async (event, webViewRef, locationRef, isCamer
             case 'StartBackGroundService':
                 setWebData(pre => ({ ...pre, userId: msg?.data?.userId || "", dbPath: msg?.data?.dbPath || "" }));
                 StartBackgroundTask(msg.data.userId, msg.data.dbPath, BackgroundTaskModule);
-                await AsyncStorage.setItem('userId', msg?.data?.userId || "");
-                await AsyncStorage.setItem('dbPath', msg?.data?.dbPath || "");
                 break;
             case 'Logout':
                 StopBackGroundTask(BackgroundTaskModule);
                 stopLocationTracking(locationRef, setWebData)
-                await AsyncStorage.removeItem('userId');
-                await AsyncStorage.removeItem('dbPath');
                 break;
             case 'Exit_App':
                 handleExitApp();
@@ -211,7 +206,7 @@ export const listenAndroidMessages = (refContext, webViewRef, BackgroundTaskModu
     refContext.current.traversalUpdate = DeviceEventEmitter.addListener(
         'onTraversalUpdate',
         history => {
-            startSavingTraversalHistory(history);
+            // startSavingTraversalHistory(history);
         }
     );
 
@@ -228,7 +223,7 @@ export const listenAndroidMessages = (refContext, webViewRef, BackgroundTaskModu
         'onLocationStatus',
         location => {
 
-            sendLocationStatus(location, webViewRef, BackgroundTaskModule, locationRef);
+            sendLocationStatus(location, webViewRef, locationRef);
         }
     );
     refContext.current.appStatus = DeviceEventEmitter.addListener(
@@ -257,19 +252,13 @@ export const listenAndroidMessages = (refContext, webViewRef, BackgroundTaskModu
 const sendNetWorkStatus = (mobile, webViewRef) => {
     webViewRef?.current?.postMessage(JSON.stringify({ type: "Mobile_Data", data: mobile }));
 };
-const sendLocationStatus = async (location, webViewRef, BackgroundTaskModule, locationRef) => {
+const sendLocationStatus =  (location, webViewRef, locationRef) => {
     webViewRef?.current?.postMessage(JSON.stringify({ type: "Location_Status", data: location }));
-    let data = await Promise.all([
-        AsyncStorage.getItem('userId'),
-        AsyncStorage.getItem('dbPath'),
-    ]);
-    let [userId, dbPath] = data;
-    if (userId && dbPath && location?.isLocationOn === false) {
-        StopBackGroundTask(BackgroundTaskModule);
+
+    if (location?.isLocationOn === false) {
         stopTracking(locationRef);
     }
-    else if (userId && dbPath && location?.isLocationOn === true) {
-        StartBackgroundTask(userId, dbPath, BackgroundTaskModule);
+    else if (location?.isLocationOn === true) {
         startLocationTracking(locationRef, webViewRef);
     }
 };

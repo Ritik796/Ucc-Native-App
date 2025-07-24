@@ -16,7 +16,6 @@ import * as action from '../Action/WebViewPageAction/WebViewPageAction';
 import CameraComponent from '../components/Camera/Camera';
 import BluetoothModule from '../components/Bluetooth/BluetoothModule';
 import { reconnectBt } from '../Action/Bluetooth/bluetoothModuleAction';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const WebViewPage = () => {
   const appState = useRef(AppState.currentState);
