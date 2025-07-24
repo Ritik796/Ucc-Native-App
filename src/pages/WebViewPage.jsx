@@ -16,6 +16,7 @@ import * as action from '../Action/WebViewPageAction/WebViewPageAction';
 import CameraComponent from '../components/Camera/Camera';
 import BluetoothModule from '../components/Bluetooth/BluetoothModule';
 import { reconnectBt } from '../Action/Bluetooth/bluetoothModuleAction';
+import NetworkErrorScreen from './NetworkErrorScreen';
 
 const WebViewPage = () => {
   const appState = useRef(AppState.currentState);
@@ -33,6 +34,7 @@ const WebViewPage = () => {
   // Bluetooth States
   const [bluetoothEvent, setBluetoothEvent] = useState(null);
   const [btConnectionRequest, setBtConnectionRequest] = useState(null);
+  const [netWorkError, setNetWorkError] = useState(false);
   const blutoothRef = useRef(false);
   const isDialogVisible = useRef(false);
   const refContext = useRef({ traversalUpdate: null, networkStatus: null, locationStatus: null, appStatus: null });
@@ -94,6 +96,9 @@ const WebViewPage = () => {
           // Skip reload completely
           return;
         }
+        if (netWorkError) {
+          return;
+        }
         // ✅ Reload only if none of the above are active
         setLoading(true);
         setWebKey(prevKey => prevKey + 1);
@@ -103,6 +108,7 @@ const WebViewPage = () => {
       if (nextAppState.match(/inactive|background/)) {
         action.stopTracking(locationRef);
         stopConnectivityListener();
+        setNetWorkError(false);
       }
 
       appState.current = nextAppState;
@@ -117,8 +123,8 @@ const WebViewPage = () => {
 
   const handleStopLoading = () => {
     setTimeout(() => setLoading(false), 1000);
-    startConnectivityListener()
-  
+    startConnectivityListener();
+
 
   };
   const startConnectivityListener = () => {
@@ -128,7 +134,11 @@ const WebViewPage = () => {
     ConnectivityModule.stopMonitoring();
   };
 
-
+  const handleRetry = () => {
+    setLoading(true);
+    setWebKey(prevKey => prevKey + 1);
+    setNetWorkError(false);
+  };
   const handleMessage = event => {
     action.readWebViewMessage(
       event,
@@ -149,6 +159,7 @@ const WebViewPage = () => {
     <SafeAreaProvider>
       <SafeAreaView style={styles.safeContainer}>
         {loading && <LoadingScreen />}
+        {netWorkError && <NetworkErrorScreen handleRetry={handleRetry} />}
         {showCamera && (
           <CameraComponent
             loader={loader}
@@ -173,7 +184,7 @@ const WebViewPage = () => {
             key={webKey}
             ref={webViewRef}
             onMessage={handleMessage}
-            source={{ uri: 'https://ucc-payment-app.web.app' }}
+            source={{ uri: 'http:/192.168.157.144:3000' }}
             style={{ flex: 1, minHeight: '100%' }} // ✅ Ensure full height
             geolocationEnabled={true}
             mediaPlaybackRequiresUserAction={false}
@@ -183,6 +194,7 @@ const WebViewPage = () => {
             setDisplayZoomControls={false}
             onLoadEnd={handleStopLoading}
             pullToRefreshEnabled={true}
+            onError={() => setNetWorkError(true)}
           />
         </KeyboardAvoidingView>
       </SafeAreaView>
