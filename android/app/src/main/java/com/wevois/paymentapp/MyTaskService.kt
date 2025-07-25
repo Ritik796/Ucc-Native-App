@@ -16,7 +16,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
-import android.widget.Toast
+//import android.widget.Toast
 import com.facebook.react.HeadlessJsTaskService
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.jstasks.HeadlessJsTaskConfig
@@ -84,8 +84,6 @@ class MyTaskService : HeadlessJsTaskService() {
             .setMinUpdateIntervalMillis(5000L)
             .setMinUpdateDistanceMeters(2f)
             .build()
-
-//        Toast.makeText(reactContext, "Location Tracking start", Toast.LENGTH_SHORT).show()
 
         fusedLocationClient.lastLocation.addOnSuccessListener { location ->
             location?.let {
@@ -159,20 +157,27 @@ class MyTaskService : HeadlessJsTaskService() {
                     if (isLocationTurnedOn()) {
                         // Merge pending with current history using single "~"
                         if (!pendingTraversalHistory.isNullOrEmpty()) {
-                            if (pendingTraversalHistory!!.last() != '~') {
-                                pendingTraversalHistory!!.append("~")
+                            // Remove trailing tildes from pending
+                            while (pendingTraversalHistory!!.endsWith("~")) {
+                                pendingTraversalHistory!!.setLength(pendingTraversalHistory!!.length - 1)
                             }
-                            if (traversalHistory.first() == '~') {
+
+                            // Add single ~ to separate if needed
+                            pendingTraversalHistory!!.append("~")
+
+                            // Remove leading tildes from traversal
+                            while (traversalHistory.startsWith("~")) {
                                 traversalHistory.deleteCharAt(0)
                             }
+
                             pendingTraversalHistory!!.append(traversalHistory)
                             traversalHistory.clear()
                             traversalHistory.append(pendingTraversalHistory.toString())
                             pendingTraversalHistory = null
                         }
 
-                        // Remove trailing "~" if present
-                        if (traversalHistory.lastOrNull() == '~') {
+                        // Remove trailing ~ before sending
+                        while (traversalHistory.endsWith("~")) {
                             traversalHistory.setLength(traversalHistory.length - 1)
                         }
 
@@ -190,11 +195,20 @@ class MyTaskService : HeadlessJsTaskService() {
                         // Save for later
                         if (pendingTraversalHistory == null) {
                             pendingTraversalHistory = StringBuilder()
-                        } else if (pendingTraversalHistory!!.isNotEmpty() && pendingTraversalHistory!!.last() != '~') {
+                        }
+
+                        // Remove trailing tildes from existing pending
+                        while (pendingTraversalHistory!!.endsWith("~")) {
+                            pendingTraversalHistory!!.setLength(pendingTraversalHistory!!.length - 1)
+                        }
+
+                        // Add single ~ to separate if needed
+                        if (pendingTraversalHistory!!.isNotEmpty()) {
                             pendingTraversalHistory!!.append("~")
                         }
 
-                        if (traversalHistory.first() == '~') {
+                        // Remove leading tildes from traversal
+                        while (traversalHistory.startsWith("~")) {
                             traversalHistory.deleteCharAt(0)
                         }
 
@@ -210,6 +224,7 @@ class MyTaskService : HeadlessJsTaskService() {
 
         handler.postDelayed(saveRunnable, getDelayToNextMinute())
     }
+
 
 
     private fun getDelayToNextMinute(): Long {

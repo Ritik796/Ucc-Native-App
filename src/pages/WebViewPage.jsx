@@ -72,7 +72,7 @@ const WebViewPage = () => {
     const subscription = DeviceEventEmitter.addListener(
       'onTraversalUpdate',
       history => {
-        // handleSaveTraversalHistory(history);
+        handleSaveTraversalHistory(history);
       }
     );
     return () => {
@@ -126,7 +126,7 @@ const WebViewPage = () => {
   };
 
   const handleSaveTraversalHistory = (history) => {
-    // action.startSavingTraversalHistory(history);
+    action.startSavingTraversalHistory(history);
   };
 
   const handleStopLoading = () => {
@@ -192,7 +192,7 @@ const WebViewPage = () => {
             key={webKey}
             ref={webViewRef}
             onMessage={handleMessage}
-            source={{ uri: 'http://192.168.157.144:3000' }}
+            source={{ uri: 'https://ucc-payment-app.web.app' }}
             style={{ flex: 1, minHeight: '100%' }} // ✅ Ensure full height
             geolocationEnabled={true}
             mediaPlaybackRequiresUserAction={false}

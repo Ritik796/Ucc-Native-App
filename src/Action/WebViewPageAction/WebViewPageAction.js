@@ -134,7 +134,7 @@ export const readWebViewMessage = async (event, webViewRef, locationRef, isCamer
         switch (msg?.type) {
             case 'startLocationTracking':
                 startLocationTracking(locationRef, webViewRef);
-
+                checkBackgroundTaskStarted(BackgroundTaskModule, msg?.data?.userId, msg?.data?.dbPath);
                 break;
             case 'openCamera':
                 const isLocationEnabled = await DeviceInfo.isLocationEnabled();
@@ -162,7 +162,7 @@ export const readWebViewMessage = async (event, webViewRef, locationRef, isCamer
                 break;
             case 'Logout':
                 StopBackGroundTask(BackgroundTaskModule);
-                stopLocationTracking(locationRef, setWebData)
+                stopLocationTracking(locationRef, setWebData);
                 break;
             case 'Exit_App':
                 handleExitApp();
@@ -198,6 +198,7 @@ const StartBackgroundTask = (userId, dbPath, BackgroundTaskModule) => {
         DB_PATH: dbPath || "",
     });
 };
+
 const StopBackGroundTask = (BackgroundTaskModule) => {
     BackgroundTaskModule.stopBackgroundTask();
 };
@@ -205,7 +206,18 @@ export const startSavingTraversalHistory = async (history) => {
     let data = JSON.parse(history);
     locationService.saveLocationHistory(data.path, data.distance, data.time, data.userId, data.dbPath);
 };
+const checkBackgroundTaskStarted = (BackgroundTaskModule, userId, dbPath) => {
+    if (!userId || !dbPath) {
+        console.warn("User ID or DB Path is undefined, skipping background task check.");
+        return;
 
+    }
+    BackgroundTaskModule.checkAndRestartBackgroundTask({
+        USER_ID: userId || "",
+        DB_PATH: dbPath || "",
+    });
+    return;
+};
 
 
 export const listenAndroidMessages = (refContext, webViewRef, BackgroundTaskModule, locationRef, isDialogVisible) => {
@@ -274,7 +286,7 @@ const sendPaymentRequestToUrl = async (paymentPayload, url, deviceType, webViewR
         if (response.status === 200 && response.data) {
             let responseData;
             if (deviceType === 'pine') {
-                responseData = { ...response?.data, deviceType: deviceType }
+                responseData = { ...response?.data, deviceType: deviceType };
             } else if (deviceType === 'orange') {
                 if (response?.data?.ResponseCode === '00' && response?.data?.ResponseDesc === 'Success') {
                     responseData = {
@@ -282,14 +294,14 @@ const sendPaymentRequestToUrl = async (paymentPayload, url, deviceType, webViewR
                         ResponseCode: 0,
                         ResponseMessage: 'APPROVED',
                         deviceType: deviceType
-                    }
+                    };
                 } else {
                     responseData = {
                         ...response?.data,
                         ResponseCode: Number(response?.data?.ResponseCode),
                         ResponseMessage: response?.data?.ResponseDesc,
                         deviceType: deviceType
-                    }
+                    };
                 }
 
             }
@@ -427,7 +439,7 @@ const checkPineTransactionStatus = (webViewRef, url, payloadData) => {
             // if (deviceType === 'orange') {
             //     responseData = { ...response?.data, ResponseCode: code, ResponseMessage: response?.data?.ResponseDesc }
             // } else {
-            responseData = { ...response?.data }
+            responseData = { ...response?.data };
             // }
             // console.log('responseData:', responseData);
             if (code === 0) {
@@ -489,7 +501,7 @@ const checkPineTransactionStatus = (webViewRef, url, payloadData) => {
             return;
         }
     }, 6000);
-}
+};
 
 const checkOrangeTransactionStatus = async (webViewRef, url, payloadData, elapsedTime, control) => {
     try {
