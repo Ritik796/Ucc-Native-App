@@ -28,7 +28,7 @@ class AppResumeModule(private val reactContext: ReactApplicationContext) :
             return
         }
 
-        Log.d("Test", "registerLifecycle called")
+        Log.d("AppResumeModule", "registerLifecycle called")
 
         app.registerActivityLifecycleCallbacks(object : Application.ActivityLifecycleCallbacks {
             override fun onActivityResumed(activity: Activity) {
@@ -47,8 +47,12 @@ class AppResumeModule(private val reactContext: ReactApplicationContext) :
                 Log.d("AppResumeModule", "System dialog might be shown")
             }
             override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {}
-            override fun onActivityDestroyed(activity: Activity) {}
-            override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) {}
+            override fun onActivityDestroyed(activity: Activity) {
+                Log.d("AppResumeModule", "System onActivityDestroyed")
+            }
+            override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) {
+                Log.d("AppResumeModule", "System onActivitySaveInstanceState")
+            }
         })
     }
 

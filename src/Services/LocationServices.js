@@ -1,45 +1,11 @@
-import Geolocation from "@react-native-community/geolocation";
-import * as db from '../Services/dbService'
+
+import * as db from '../Services/dbService';
 import { getCurrentDatabase } from "../Firebase";
 let successStatus = 'success';
 let failStatus = 'fail';
 
 
-/*
-    Function name : getCurrentPosition();
-    Description  : This function is working for get current location of user;
-    Written By : Ritik Parmar
-    Writeen date : 10 Jul 2025
- */
-export const getCurrentPosition = () => {
-    return new Promise((resolve) => {
-        try {
-            Geolocation.getCurrentPosition(
-                (pos) => {
-                    const { latitude, longitude, accuracy } = pos.coords;
-                    if (accuracy != null && accuracy <= 15) {
-                        resolve({ status: successStatus, data: { latitude, longitude } });
-                    }
-                    else {
-                        console.log("Skipped low-accuracy position:", accuracy);
-                    }
-                },
-                (error) => {
-                    console.log(error);
-                    resolve({ status: failStatus, data: {} });
-                },
-                {
-                    enableHighAccuracy: true,
-                    maximumAge: 0,
-                    timeout: 5000,
-                }
-            );
-        } catch (error) {
-            console.log(error);
-            resolve({ status: failStatus, data: {} });
-        }
-    });
-};
+
 
 /*
     Function name : getDistance();
@@ -125,36 +91,33 @@ export const getTotalCoverDistance = (traversalArray) => {
     Written By : Ritik Parmar
     Writeen date : 10 Jul 2025
  */
-export const saveLocationHistory = async (traversalHistory, minuteDistance, currentTime, userId, dbPath) => {
+export const saveLocationHistory = async (
+    traversalHistory,
+    minuteDistance,
+    currentTime,
+    userId,
+    fullPathFromJS, // <-- you pass this from JS
+    dbPath
+) => {
     try {
-        if (!traversalHistory || traversalHistory.length === 0 || !userId || !dbPath ) {
+        if (!traversalHistory || traversalHistory.length === 0 || !userId || !dbPath || !fullPathFromJS) {
             return failStatus;
         }
-        let database = await getCurrentDatabase(dbPath)
-        const now = new Date();
-        const year = now.getFullYear();
-        const month = now.toLocaleString("default", { month: "long" });
-        const todayDate = now.toISOString().split("T")[0];
 
-        const path = `PaymentCollectionInfo/PaymentCollectorLocationHistory/${userId}/${year}/${month}/${todayDate}`;
+        const database = await getCurrentDatabase(dbPath);
 
-        // Fetch and calculate distances in parallel
-        let coveredDistance = await db.getData(`${path}/TotalCoveredDistance`, database)
-
+        let coveredDistance = await db.getData(`${fullPathFromJS}/TotalCoveredDistance`, database);
         const totalDistance = Number(minuteDistance ?? 0) + Number(coveredDistance ?? 0);
-       
 
-        // Save distance and lat-lng, and update summary info concurrently
         await Promise.all([
-            db.saveData(`${path}/${currentTime}`, {
+            db.saveData(`${fullPathFromJS}/${currentTime}`, {
                 'distance-in-meter': minuteDistance,
                 'lat-lng': traversalHistory
-            },database),
-            db.saveData(`${path}`, {
+            }, database),
+            db.saveData(`${fullPathFromJS}`, {
                 TotalCoveredDistance: totalDistance,
                 'last-update-time': currentTime
-
-            },database)
+            }, database)
         ]);
 
         return successStatus;

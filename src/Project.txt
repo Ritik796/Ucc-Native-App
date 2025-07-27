@@ -2,5 +2,3 @@ Test url for team : https://ucc-payment-app.web.app;
 Test Url Ritik1 :  https://fir-project-d59e1.web.app;
 Test Url Ritik2 :   https://interview-8f792.web.app;
 
-┬ metro-config@0.81.3
-│   └─┬ metro@0.81.3

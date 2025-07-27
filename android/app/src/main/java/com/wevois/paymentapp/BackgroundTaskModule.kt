@@ -1,31 +1,27 @@
 package com.wevois.paymentapp
 
 import android.annotation.SuppressLint
-import android.app.NotificationChannel
-import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
-import androidx.core.app.NotificationCompat
-import androidx.core.app.NotificationManagerCompat
-import androidx.core.content.ContextCompat
-import androidx.core.content.edit
-import com.facebook.react.bridge.*
+import com.facebook.react.bridge.ReactApplicationContext
+import com.facebook.react.bridge.ReactContextBaseJavaModule
+import com.facebook.react.bridge.ReactMethod
+import com.facebook.react.bridge.ReadableMap
 import java.util.Calendar
 
 class BackgroundTaskModule(reactContext: ReactApplicationContext) :
     ReactContextBaseJavaModule(reactContext) {
 
     private var lastStartTime = 0L
-    private val minStartInterval = 10_000L
-    private val handler = Handler(Looper.getMainLooper())
-    private var runnable: Runnable? = null
+    private val minStartInterval = 10_000L // 10 seconds
 
-    override fun getName(): String = "BackgroundTaskModule"
+    override fun getName(): String {
+        return "BackgroundTaskModule"
+    }
 
     @SuppressLint("NewApi")
     @ReactMethod
@@ -38,59 +34,92 @@ class BackgroundTaskModule(reactContext: ReactApplicationContext) :
         lastStartTime = currentTime
 
         val context = reactApplicationContext
-        val userId = options.getString("USER_ID") ?: ""
-        val dbPath = options.getString("DB_PATH") ?: ""
+        val userId = if (options.hasKey("USER_ID")) options.getString("USER_ID") else null
+        val dbPath = if (options.hasKey("DB_PATH")) options.getString("DB_PATH") else null
+        val travelPath = if (options.hasKey("TRAVEL_PATH")) options.getString("TRAVEL_PATH") else null
 
-        if (userId.isEmpty() || dbPath.isEmpty()) {
-            Log.e("BackgroundTaskModule", "Missing USER_ID or DB_PATH")
+        Log.d("BackgroundTaskModule", "Received USER_ID: $userId")
+        Log.d("BackgroundTaskModule", "Received DB_PATH: $dbPath")
+        Log.d("BackgroundTaskModule", "Received TRAVEL_PATH: $travelPath")
+
+        if (userId.isNullOrEmpty() || dbPath.isNullOrEmpty() || travelPath.isNullOrEmpty()) {
+            Log.e("BackgroundTaskModule", "Missing USER_ID or DB_PATH or TRAVEL_PATH")
             return
         }
+
+        Log.i("BackgroundTaskModule", "Starting MyTaskService with USER_ID: $userId and DB_PATH: $dbPath and TRAVEL_PATH : $travelPath")
 
         val serviceIntent = Intent(context, MyTaskService::class.java).apply {
             putExtra("USER_ID", userId)
             putExtra("DB_PATH", dbPath)
+            putExtra("TRAVEL_PATH",travelPath)
         }
 
-        // Start foreground service
-        ContextCompat.startForegroundService(context, serviceIntent)
+        // Version check for startForegroundService
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            context.startForegroundService(serviceIntent)
+        } else {
+            context.startService(serviceIntent)
+        }
 
-        setTrackingActive(true)
         startTimeChecker()
-        Log.d("BackgroundTaskModule", "startForegroundService called")
+        Log.d("BackgroundTaskModule", "startForegroundService or startService called")
+    }
+
+    @ReactMethod
+    fun checkAndRestartBackgroundTask(options: ReadableMap) {
+        val context = reactApplicationContext
+
+        val userId = if (options.hasKey("USER_ID")) options.getString("USER_ID") else null
+        val dbPath = if (options.hasKey("DB_PATH")) options.getString("DB_PATH") else null
+        val travelPath = if (options.hasKey("TRAVEL_PATH")) options.getString("TRAVEL_PATH") else null
+
+        if (userId.isNullOrEmpty() || dbPath.isNullOrEmpty() || travelPath.isNullOrEmpty()) {
+            Log.e("BackgroundTaskModule", "Missing USER_ID : $userId or DB_PATH : $dbPath or TRAVEL_PATH : $travelPath  in checkAndRestartBackgroundTask")
+            return
+        }
+
+        if (!isServiceRunning(MyTaskService::class.java)) {
+            Log.i("BackgroundTaskModule", "Service not running. Restarting MyTaskService.")
+            val serviceIntent = Intent(context, MyTaskService::class.java).apply {
+                putExtra("USER_ID", userId)
+                putExtra("DB_PATH", dbPath)
+                putExtra("TRAVEL_PATH",travelPath)
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(serviceIntent)
+            } else {
+                context.startService(serviceIntent)
+            }
+            startTimeChecker()
+        } else {
+            Log.i("BackgroundTaskModule", "Service already running. No action taken.")
+        }
+    }
+
+    @SuppressLint("MissingPermission", "DeprecatedMethod")
+    private fun isServiceRunning(serviceClass: Class<*>): Boolean {
+        val activityManager = reactApplicationContext.getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
+        @Suppress("DEPRECATION")
+        for (service in activityManager.getRunningServices(Int.MAX_VALUE)) {
+            if (serviceClass.name == service.service.className) {
+                return true
+            }
+        }
+        return false
     }
 
     @ReactMethod
     fun stopBackgroundTask() {
         val context = reactApplicationContext
+        Log.d("stopBackgroundTask", "App killed and run")
         val serviceIntent = Intent(context, MyTaskService::class.java)
-
         context.stopService(serviceIntent)
-        setTrackingActive(false)
         stopTimeChecker()
-
-        // Cancel the foreground notification and the status notification
-        NotificationManagerCompat.from(context).cancel(1)
-        NotificationManagerCompat.from(context).cancel(1001)
-
-        // Reset the tracking flag
-        val prefs = context.getSharedPreferences("tracking_prefs", Context.MODE_PRIVATE)
-        prefs.edit {
-            putBoolean("is_notification_shown", false)
-        }
-
-        Log.d("BackgroundTaskModule", "stopBackgroundTask called")
     }
 
-    @ReactMethod
-    fun checkAndRestartBackgroundTask(options: ReadableMap) {
-        if (!isTrackingActive()) {
-            Log.d("BackgroundTaskModule", "Tracking inactive. Restarting...")
-            startBackgroundTask(options)
-        } else {
-            Log.d("BackgroundTaskModule", "Tracking already running.")
-            showTrackingAlreadyRunningNotification()
-        }
-    }
+    private val handler = Handler(Looper.getMainLooper())
+    private var runnable: Runnable? = null
 
     private fun startTimeChecker() {
         runnable = object : Runnable {
@@ -107,6 +136,7 @@ class BackgroundTaskModule(reactContext: ReactApplicationContext) :
                 handler.postDelayed(this, 60_000)
             }
         }
+
         handler.postDelayed(runnable!!, getDelayToNextMinute())
     }
 
@@ -124,73 +154,4 @@ class BackgroundTaskModule(reactContext: ReactApplicationContext) :
         }
         return nextMinute.timeInMillis - now.timeInMillis
     }
-
-    private fun setTrackingActive(isActive: Boolean) {
-        val prefs = reactApplicationContext.getSharedPreferences("tracking_prefs", Context.MODE_PRIVATE)
-        prefs.edit {
-            putBoolean("is_tracking_active", isActive)
-        }
-    }
-
-    private fun isTrackingActive(): Boolean {
-        val prefs = reactApplicationContext.getSharedPreferences("tracking_prefs", Context.MODE_PRIVATE)
-        return prefs.getBoolean("is_tracking_active", false)
-    }
-
-    private fun showTrackingAlreadyRunningNotification() {
-        val context = reactApplicationContext
-        val channelId = "TrackingStatusChannel"
-        val notificationId = 1001
-
-        // ✅ Android 13+ notification permission check
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            val permissionCheck = ContextCompat.checkSelfPermission(
-                context,
-                android.Manifest.permission.POST_NOTIFICATIONS
-            )
-            if (permissionCheck != PackageManager.PERMISSION_GRANTED) {
-                Log.w("BackgroundTaskModule", "Notification permission not granted, skipping.")
-                return
-            }
-        }
-
-        // ✅ Delete and recreate channel to force badge setting
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            manager.deleteNotificationChannel(channelId) // Remove old channel to reset settings
-
-            val channel = NotificationChannel(
-                channelId,
-                "Tracking Status",
-                NotificationManager.IMPORTANCE_MIN // MIN hides dot/badge/sound
-            ).apply {
-                description = "Shows when tracking is already active"
-                enableVibration(false)
-                setSound(null, null)
-                setShowBadge(false) // ✅ No badge on app icon
-            }
-            manager.createNotificationChannel(channel)
-        }
-
-        // ✅ Cancel any previous notification
-        NotificationManagerCompat.from(context).cancel(notificationId)
-
-        // ✅ Build new notification without badge
-        val notification = NotificationCompat.Builder(context, channelId)
-            .setContentTitle("WeVOIS Payment App")
-            .setContentText("Background service is running")
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
-            .setPriority(NotificationCompat.PRIORITY_MIN) // ✅ No badge
-            .setAutoCancel(false)
-            .setOngoing(true)
-            .setBadgeIconType(NotificationCompat.BADGE_ICON_NONE) // ✅ No badge icon
-            .build()
-
-        try {
-            NotificationManagerCompat.from(context).notify(notificationId, notification)
-        } catch (e: SecurityException) {
-            Log.e("BackgroundTaskModule", "Notification failed: ${e.message}")
-        }
-    }
-
 }

@@ -78,11 +78,11 @@ export const requestLocationPermission = async () => {
 
 export const startLocationTracking = async (locationRef, webViewRef) => {
     try {
-        // console.log('StartLocationTracking')
+        console.log('StartLocationTracking')
         const watchId = Geolocation.watchPosition(
             (position) => {
                 const { latitude, longitude, accuracy } = position.coords;
-
+                console.log('Location:', latitude, longitude, accuracy);
                 if (accuracy != null && accuracy <= 15) {
                     webViewRef?.current?.postMessage(JSON.stringify({ type: "Location", status: "success", data: { lat: latitude, lng: longitude } }));
                 }
@@ -95,11 +95,11 @@ export const startLocationTracking = async (locationRef, webViewRef) => {
                 distanceFilter: 10,          // Trigger every ~10 meter
                 interval: 10000,            // Regular update every 10s
                 fastestInterval: 6000,      // Minimum interval for updates
-                useSignificantChanges: false,
                 maximumAge: 0
             }
 
         );
+        
         locationRef.current = watchId;
     } catch (error) {
         if (locationRef.current != null) {
@@ -122,6 +122,7 @@ export const stopLocationTracking = (locationRef, setWebData) => {
 
 export const stopTracking = async (locationRef) => {
     if (locationRef?.current) {
+        console.log(`Stopping location tracking... Watch ID: ${locationRef.current}`);
         await Geolocation.clearWatch(locationRef.current);
         locationRef.current = null;
     }
@@ -133,8 +134,10 @@ export const readWebViewMessage = async (event, webViewRef, locationRef, isCamer
         let msg = JSON.parse(data);
         switch (msg?.type) {
             case 'startLocationTracking':
-                startLocationTracking(locationRef, webViewRef);
-                checkBackgroundTaskStarted(BackgroundTaskModule, msg?.data?.userId, msg?.data?.dbPath);
+                      console.log(`Start location tracking... Watch ID: ${locationRef.current}`);
+                    startLocationTracking(locationRef, webViewRef);
+                
+                checkBackgroundTaskStarted(BackgroundTaskModule, msg?.data?.userId, msg?.data?.dbPath,msg?.data?.travelPath);
                 break;
             case 'openCamera':
                 const isLocationEnabled = await DeviceInfo.isLocationEnabled();
@@ -157,12 +160,12 @@ export const readWebViewMessage = async (event, webViewRef, locationRef, isCamer
                 break;
 
             case 'StartBackGroundService':
-                setWebData(pre => ({ ...pre, userId: msg?.data?.userId || "", dbPath: msg?.data?.dbPath || "" }));
-                StartBackgroundTask(msg.data.userId, msg.data.dbPath, BackgroundTaskModule);
+                setWebData(pre => ({ ...pre, userId: msg?.data?.userId || "", dbPath: msg?.data?.dbPath || "", travelPath: msg?.data?.travelPath || "" }));
+                StartBackgroundTask(msg.data.userId, msg.data.dbPath, msg.data.travelPath, BackgroundTaskModule);
                 break;
             case 'Logout':
                 StopBackGroundTask(BackgroundTaskModule);
-                stopLocationTracking(locationRef, setWebData);
+                stopTracking(locationRef);
                 break;
             case 'Exit_App':
                 handleExitApp();
@@ -185,6 +188,9 @@ export const readWebViewMessage = async (event, webViewRef, locationRef, isCamer
             case 'check-location':
                 checkUserLocation(webViewRef);
                 break;
+            case 'check-version':
+                checkAppVersion(msg?.data?.version, webViewRef);
+                break;
             default:
                 break;
         }
@@ -192,10 +198,25 @@ export const readWebViewMessage = async (event, webViewRef, locationRef, isCamer
         return;
     }
 };
-const StartBackgroundTask = (userId, dbPath, BackgroundTaskModule) => {
+
+export const checkAppVersion = async(version, webViewRef) => {
+    if (version) {
+       const currentVersion = await DeviceInfo.getVersion();
+       const required = version?.toString()?.trim();
+       if (required === currentVersion?.toString()?.trim()) {
+           webViewRef.current?.postMessage(JSON.stringify({ type: "Version_Valid" }));
+       } else {
+           webViewRef.current?.postMessage(JSON.stringify({ type: "Version_Expired" }));
+       }
+    } else {
+        console.warn("No version provided to check.");
+    }
+}
+const StartBackgroundTask = (userId, dbPath, travelPath, BackgroundTaskModule) => {
     BackgroundTaskModule.startBackgroundTask({
         USER_ID: userId || "",
         DB_PATH: dbPath || "",
+        TRAVEL_PATH: travelPath || "",
     });
 };
 
@@ -204,23 +225,24 @@ const StopBackGroundTask = (BackgroundTaskModule) => {
 };
 export const startSavingTraversalHistory = async (history) => {
     let data = JSON.parse(history);
-    locationService.saveLocationHistory(data.path, data.distance, data.time, data.userId, data.dbPath);
+    locationService.saveLocationHistory(data.path, data.distance, data.time, data.userId, data.travelPath, data.dbPath);
 };
-const checkBackgroundTaskStarted = (BackgroundTaskModule, userId, dbPath) => {
-    if (!userId || !dbPath) {
-        console.warn("User ID or DB Path is undefined, skipping background task check.");
+const checkBackgroundTaskStarted = (BackgroundTaskModule, userId, dbPath, travelPath) => {
+    if (!userId || !dbPath || !travelPath) {
+        console.warn("User ID, DB Path or Travel Path is undefined, skipping background task check.");
         return;
 
     }
     BackgroundTaskModule.checkAndRestartBackgroundTask({
         USER_ID: userId || "",
         DB_PATH: dbPath || "",
+        TRAVEL_PATH: travelPath || "",
     });
     return;
 };
 
 
-export const listenAndroidMessages = (refContext, webViewRef, BackgroundTaskModule, locationRef, isDialogVisible) => {
+export const listenAndroidMessages = (refContext, webViewRef, locationRef, isDialogVisible) => {
 
     refContext.current.networkStatus = DeviceEventEmitter.addListener(
         'onConnectivityStatus',
@@ -268,7 +290,7 @@ const sendLocationStatus = (location, webViewRef, locationRef) => {
     if (location?.isLocationOn === false) {
         stopTracking(locationRef);
     }
-    else if (location?.isLocationOn === true) {
+    else if (location?.isLocationOn === true && locationRef?.current !== null) {
         startLocationTracking(locationRef, webViewRef);
     }
 };

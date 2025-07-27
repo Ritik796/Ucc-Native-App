@@ -14,9 +14,11 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import androidx.core.content.ContextCompat
+import androidx.core.location.LocationManagerCompat
 import com.facebook.react.bridge.*
 import com.facebook.react.modules.core.DeviceEventManagerModule
 import java.util.Calendar
+//import android.provider.Settings
 
 class ConnectivityModule(private val reactContext: ReactApplicationContext) :
     ReactContextBaseJavaModule(reactContext) {
@@ -134,7 +136,7 @@ class ConnectivityModule(private val reactContext: ReactApplicationContext) :
     }
 
     private fun sendOnlyLocationStatus() {
-        val isLocation = isLocationEnabled(reactContext)
+        val isLocation = isDeviceLocationOn(reactContext)
         Log.d("ConnectivityModule", "Location status: isLocation=$isLocation")
 
         val locationMap = Arguments.createMap().apply {
@@ -160,22 +162,23 @@ class ConnectivityModule(private val reactContext: ReactApplicationContext) :
     }
 
 
-    private fun isLocationEnabled(context: Context): Boolean {
+  private  fun isDeviceLocationOn(context: Context): Boolean {
         val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
-        return locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER) ||
-                locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
+        return LocationManagerCompat.isLocationEnabled(locationManager)
     }
+
 
     @ReactMethod
     fun startMonitoring() {
         Log.d("Connection Listener", "Started")
         register()
         sendInitialStatusToJS() // <-- Send immediately on JS call too
+        startTimeChecker()
     }
     private val handler = Handler(Looper.getMainLooper())
     private var runnable: Runnable? = null
-    private fun startTimeChecker() {
 
+    private fun startTimeChecker() {
 
         runnable = object : Runnable {
             override fun run() {
