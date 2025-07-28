@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "824350631855",
+    "firebase_url": "https://back-services-b3a19-default-rtdb.firebaseio.com",
+    "project_id": "back-services-b3a19",
+    "storage_bucket": "back-services-b3a19.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:824350631855:android:2d1e74d50cf2050495715a",
+        "android_client_info": {
+          "package_name": "com.wevois.paymentapp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDSI-_v0oZhM37T1StbEeXF8WwGXV-ccJU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

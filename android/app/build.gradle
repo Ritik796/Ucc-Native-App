@@ -1,6 +1,7 @@
 apply plugin: "com.android.application"
 apply plugin: "org.jetbrains.kotlin.android"
 apply plugin: "com.facebook.react"
+apply plugin: 'com.google.gms.google-services'
 
 /**
  * This is the configuration block to customize your React Native Android app.
@@ -134,6 +135,8 @@ dependencies {
     implementation 'com.google.android.gms:play-services-location:21.3.0'
     implementation 'androidx.localbroadcastmanager:localbroadcastmanager:1.1.0'
     implementation "androidx.core:core:1.6.0" // or higher
+     implementation 'com.google.firebase:firebase-database:21.0.0'
+
 
 
     // ✅ Add Database KTX
