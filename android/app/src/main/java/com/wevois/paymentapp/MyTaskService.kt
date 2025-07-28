@@ -219,14 +219,14 @@ class MyTaskService : HeadlessJsTaskService() {
 
             Tasks.whenAll(updateTasks).addOnSuccessListener {
                 Log.d("FirebaseSave", "Saved location history to Firebase")
-                Toast.makeText(reactContext,"Saved location history",Toast.LENGTH_LONG).show()
+//                Toast.makeText(reactContext,"Saved location history",Toast.LENGTH_LONG).show()
             }.addOnFailureListener {
                 Log.e("FirebaseSave", "Error saving to Firebase", it)
-                Toast.makeText(reactContext,"Error saving history",Toast.LENGTH_LONG).show()
+//                Toast.makeText(reactContext,"Error saving history",Toast.LENGTH_LONG).show()
             }
         }.addOnFailureListener {
             Log.e("FirebaseSave", "Failed to fetch TotalCoveredDistance", it)
-            Toast.makeText(reactContext,"Error saving history",Toast.LENGTH_LONG).show()
+//            Toast.makeText(reactContext,"Error saving history",Toast.LENGTH_LONG).show()
         }
     }
 
