@@ -1,81 +1,116 @@
 import axios from "axios";
-import { PermissionsAndroid, Platform, DeviceEventEmitter, BackHandler } from "react-native";
+import { PermissionsAndroid, Platform, DeviceEventEmitter, BackHandler, Alert, Linking } from "react-native";
 import Geolocation from "@react-native-community/geolocation";
 import DeviceInfo from "react-native-device-info";
 import * as locationService from '../../Services/LocationServices';
 
+
 export const requestLocationPermission = async () => {
-    try {
-        if (Platform.OS !== "android") return true; // iOS handled differently
+  try {
+    if (Platform.OS !== 'android') return true;
 
-        let isPermission = true;
+    let isPermission = true;
 
-        // Step 1: Request all permissions EXCEPT background location
-        const granted = await PermissionsAndroid.requestMultiple([
-            PermissionsAndroid.PERMISSIONS.CAMERA,
-            PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE,
-            PermissionsAndroid.PERMISSIONS.READ_MEDIA_IMAGES,
-            PermissionsAndroid.PERMISSIONS.ACCESS_MEDIA_LOCATION,
-            PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
-            PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS
-        ]);
+    // Step 1: Request initial permissions
+    const granted = await PermissionsAndroid.requestMultiple([
+      PermissionsAndroid.PERMISSIONS.CAMERA,
+      PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE,
+      PermissionsAndroid.PERMISSIONS.READ_MEDIA_IMAGES,
+      PermissionsAndroid.PERMISSIONS.ACCESS_MEDIA_LOCATION,
+      PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+      PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS
+    ]);
 
-        if (
-            granted[PermissionsAndroid.PERMISSIONS.CAMERA] !==
-            PermissionsAndroid.RESULTS.GRANTED
-        ) {
-            isPermission = false;
-        }
+    const checkPermission = (perm) =>
+      granted[perm] === PermissionsAndroid.RESULTS.GRANTED;
 
-
-        if (
-            granted[PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE] !==
-            PermissionsAndroid.RESULTS.GRANTED
-        ) {
-            isPermission = false;
-        }
-        if (
-            granted[PermissionsAndroid.PERMISSIONS.READ_MEDIA_IMAGES] !==
-            PermissionsAndroid.RESULTS.GRANTED
-        ) {
-            isPermission = false;
-        }
-        if (
-            granted[PermissionsAndroid.PERMISSIONS.ACCESS_MEDIA_LOCATION] !==
-            PermissionsAndroid.RESULTS.GRANTED
-        ) {
-            isPermission = false;
-        }
-        if (
-            granted[PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION] !==
-            PermissionsAndroid.RESULTS.GRANTED
-        ) {
-            isPermission = false;
-        }
-
-        if (
-            granted[PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS] !==
-            PermissionsAndroid.RESULTS.GRANTED
-        ) {
-            isPermission = false;
-        }
-
-        // Step 2: Request background location permission separately
-        const bgGranted = await PermissionsAndroid.request(
-            PermissionsAndroid.PERMISSIONS.ACCESS_BACKGROUND_LOCATION
-        );
-
-        if (bgGranted !== PermissionsAndroid.RESULTS.GRANTED) {
-            isPermission = false;
-        }
-
-        return isPermission;
-    } catch (err) {
-        console.warn("Permission error:", err);
-        return false;
+    if (
+      !checkPermission(PermissionsAndroid.PERMISSIONS.CAMERA) ||
+      !checkPermission(PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE) ||
+      !checkPermission(PermissionsAndroid.PERMISSIONS.READ_MEDIA_IMAGES) ||
+      !checkPermission(PermissionsAndroid.PERMISSIONS.ACCESS_MEDIA_LOCATION) ||
+      !checkPermission(PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION) ||
+      !checkPermission(PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS)
+    ) {
+      isPermission = false;
     }
-};
 
+    // ✅ Step 2: Check if background location is already granted
+    const alreadyGranted = await PermissionsAndroid.check(
+      PermissionsAndroid.PERMISSIONS.ACCESS_BACKGROUND_LOCATION
+    );
+
+    if (alreadyGranted) {
+      return isPermission; // ✅ Don't ask again if already granted
+    }
+
+    // Step 3: Show guidance alert ONCE if not granted
+    await new Promise((resolve) => {
+      Alert.alert(
+        'Background Location Required',
+        'To continue, please allow background location access and select "Allow all the time" on the next screen.',
+        [
+          {
+            text: 'Continue',
+            onPress: () => resolve(true)
+          }
+        ],
+        { cancelable: false }
+      );
+    });
+
+    // Step 4: Request background location in a loop until granted or user opens settings
+    let loop = true;
+    while (loop) {
+      const bgGranted = await PermissionsAndroid.request(
+        PermissionsAndroid.PERMISSIONS.ACCESS_BACKGROUND_LOCATION
+      );
+
+      if (bgGranted === PermissionsAndroid.RESULTS.GRANTED) {
+        loop = false;
+        return isPermission;
+      } else if (bgGranted === PermissionsAndroid.RESULTS.DENIED) {
+        // Show retry alert
+        await new Promise((resolve) => {
+          Alert.alert(
+            'Permission Needed',
+            'Background location is required to proceed. Please allow it.',
+            [
+              {
+                text: 'Retry',
+                onPress: () => resolve(true)
+              }
+            ],
+            { cancelable: false }
+          );
+        });
+      } else if (bgGranted === PermissionsAndroid.RESULTS.NEVER_ASK_AGAIN) {
+        // Redirect to settings
+        await new Promise((resolve) => {
+          Alert.alert(
+            'Enable Permission',
+            'Background location permission has been permanently denied. Please enable it from app settings.',
+            [
+              {
+                text: 'Open Settings',
+                onPress: async () => {
+                  await Linking.openSettings();
+                  resolve(true);
+                }
+              }
+            ],
+            { cancelable: false }
+          );
+        });
+      }
+    }
+
+    return false;
+  } catch (err) {
+    console.warn('Permission error:', err);
+    return false;
+  }
+};
 export const startLocationTracking = async (locationRef, webViewRef) => {
     try {
         console.log('StartLocationTracking')
@@ -242,12 +277,12 @@ const checkBackgroundTaskStarted = (BackgroundTaskModule, userId, dbPath, travel
 };
 
 
-export const listenAndroidMessages = (refContext, webViewRef, locationRef, isDialogVisible) => {
+export const listenAndroidMessages = (refContext, webViewRef, locationRef, isDialogVisible,setStatus) => {
 
     refContext.current.networkStatus = DeviceEventEmitter.addListener(
         'onConnectivityStatus',
         mobile => {
-            sendNetWorkStatus(mobile, webViewRef);
+            sendNetWorkStatus(mobile, webViewRef,setStatus);
         }
     );
 
@@ -255,7 +290,7 @@ export const listenAndroidMessages = (refContext, webViewRef, locationRef, isDia
         'onLocationStatus',
         location => {
 
-            sendLocationStatus(location, webViewRef, locationRef);
+            sendLocationStatus(location, webViewRef, locationRef,setStatus);
         }
 
     );
@@ -281,11 +316,11 @@ export const listenAndroidMessages = (refContext, webViewRef, locationRef, isDia
 
 
 
-const sendNetWorkStatus = (mobile, webViewRef) => {
-    webViewRef?.current?.postMessage(JSON.stringify({ type: "Mobile_Data", data: mobile }));
+const sendNetWorkStatus = (mobile, webViewRef,setStatus) => {
+    setStatus((prev) => ({ ...prev, networkStatus: !mobile?.isMobileDataOn  }));
 };
-const sendLocationStatus = (location, webViewRef, locationRef) => {
-    webViewRef?.current?.postMessage(JSON.stringify({ type: "Location_Status", data: location }));
+const sendLocationStatus = (location, webViewRef, locationRef,setStatus) => {
+    setStatus((prev) => ({ ...prev, locationStatus: !location?.isLocationOn }));    
 
     if (location?.isLocationOn === false) {
         stopTracking(locationRef);

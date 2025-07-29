@@ -17,6 +17,8 @@ import CameraComponent from '../components/Camera/Camera';
 import BluetoothModule from '../components/Bluetooth/BluetoothModule';
 import { reconnectBt } from '../Action/Bluetooth/bluetoothModuleAction';
 import NetworkErrorScreen from './NetworkErrorScreen';
+import LoadingOffScreen from './LocationOffScreen';
+import NetworkOffScreen from './NetWorkOffScreen';
 
 const WebViewPage = () => {
   const appState = useRef(AppState.currentState);
@@ -39,6 +41,7 @@ const WebViewPage = () => {
   const isDialogVisible = useRef(false);
   const isPaymentProcess = useRef(false);
   const refContext = useRef({ traversalUpdate: null, networkStatus: null, locationStatus: null, appStatus: null });
+  const [status,setStatus] = useState({networkStatus: false, locationStatus: false});
 
   useEffect(() => {
     // Request location permission
@@ -49,7 +52,7 @@ const WebViewPage = () => {
     const subscription = AppState.addEventListener('change', handleAppStateChange);
 
     // Start Android listeners
-    const androidListener = action.listenAndroidMessages(refContext, webViewRef, locationRef, isDialogVisible);
+    const androidListener = action.listenAndroidMessages(refContext, webViewRef, locationRef, isDialogVisible,setStatus);
 
     // Add back button listener
     const backAction = () => {
@@ -168,6 +171,8 @@ const WebViewPage = () => {
       <SafeAreaView style={styles.safeContainer}>
         {loading && <LoadingScreen />}
         {netWorkError && <NetworkErrorScreen handleRetry={handleRetry} />}
+        {status.networkStatus && <NetworkOffScreen handleRetry={handleRetry} />}
+        {status.locationStatus && <LoadingOffScreen handleRetry={handleRetry} />}
         {showCamera && (
           <CameraComponent
             loader={loader}
@@ -192,7 +197,7 @@ const WebViewPage = () => {
             key={webKey}
             ref={webViewRef}
             onMessage={handleMessage}
-            source={{ uri: 'https://ucc-payment-app.web.app' }}
+            source={{ uri: 'https://fir-project-d59e1.web.app' }}
             style={{ flex: 1, minHeight: '100%' }} // ✅ Ensure full height
             geolocationEnabled={true}
             mediaPlaybackRequiresUserAction={false}

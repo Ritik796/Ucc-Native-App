@@ -7,7 +7,7 @@ export default function NetworkErrorScreen({handleRetry}) {
       <View style={styles.div}>
         <View style={styles.netWorkContainer}>
           <Image
-            source={require('../assets/images/networkError.png')}
+            source={require('../assets/images/noInternet.png')}
             style={styles.image}
           />
           <Text style={styles.textHead}>
@@ -15,10 +15,10 @@ export default function NetworkErrorScreen({handleRetry}) {
           </Text>
           <View style={styles.text}>
             <Text style={styles.infoText}>
-              You are offline, Please check your
+            Something went wrong , Please check your 
             </Text>
             <Text style={styles.infoText}>
-              internet connection
+           internet connection and try again.
             </Text>
 
           </View>
