@@ -32,7 +32,7 @@ const WebViewPage = () => {
   const webViewRef = useRef(null);
   const locationRef = useRef(null);
   const isCameraActive = useRef(null);
-  const { BackgroundTaskModule, ConnectivityModule } = NativeModules;
+  const { BackgroundTaskModule, ConnectivityModule,AppResumeModule } = NativeModules;
   // Bluetooth States
   const [bluetoothEvent, setBluetoothEvent] = useState(null);
   const [btConnectionRequest, setBtConnectionRequest] = useState(null);
@@ -41,7 +41,7 @@ const WebViewPage = () => {
   const isDialogVisible = useRef(false);
   const isPaymentProcess = useRef(false);
   const refContext = useRef({ traversalUpdate: null, networkStatus: null, locationStatus: null, appStatus: null });
-  const [status,setStatus] = useState({networkStatus: false, locationStatus: false});
+  const [status, setStatus] = useState({ networkStatus: false, locationStatus: false });
 
   useEffect(() => {
     // Request location permission
@@ -52,7 +52,7 @@ const WebViewPage = () => {
     const subscription = AppState.addEventListener('change', handleAppStateChange);
 
     // Start Android listeners
-    const androidListener = action.listenAndroidMessages(refContext, webViewRef, locationRef, isDialogVisible,setStatus);
+    const androidListener = action.listenAndroidMessages(refContext, webViewRef, locationRef, isDialogVisible, setStatus);
 
     // Add back button listener
     const backAction = () => {
@@ -70,16 +70,29 @@ const WebViewPage = () => {
 
     // eslint-disable-next-line
   }, []);
-  
+
   useEffect(() => {
-    const subscription = DeviceEventEmitter.addListener(
-      'onTraversalUpdate',
-      history => {
-        handleSaveTraversalHistory(history);
+    const avatorSub = DeviceEventEmitter.addListener(
+      'onAvatarLocationUpdate',
+      avatar => {
+        const data = JSON.parse(avatar);
+        console.log('avator', data);
+        action.handleTravelHistory('avatar', data, webViewRef);
+
       }
     );
+    const travelSub = DeviceEventEmitter.addListener(
+      'onTraversalUpdate',
+      history => {
+        const data = JSON.parse(history);
+        console.log('history', data);
+        action.handleTravelHistory('history', data, webViewRef);
+
+      }
+    );
+
     return () => {
-      subscription.remove();
+      travelSub.remove();
     };
   }, []);
   const handleAppStateChange = async nextAppState => {
@@ -90,6 +103,12 @@ const WebViewPage = () => {
       if (wasInBackground || isNowActive) {
         if (isNowActive) {
           startConnectivityListener();
+          if (webViewRef.current) {
+            webViewRef.current.postMessage(JSON.stringify({
+              type: 'APP_STATE_ACTIVE'
+            }));
+          }
+
         }
         if (isCameraActive.current) {
           isCameraActive.current = false;
@@ -111,8 +130,8 @@ const WebViewPage = () => {
           return;
         }
         // ✅ Reload only if none of the above are active
-        setLoading(true);
-        setWebKey(prevKey => prevKey + 1);
+        // setLoading(true);
+        // setWebKey(prevKey => prevKey + 1);
         reconnectBt();
       }
 
@@ -133,16 +152,20 @@ const WebViewPage = () => {
   };
 
   const handleStopLoading = () => {
-    setTimeout(() => setLoading(false), 1000);
+    setTimeout(() => {
+      setLoading(false);
+    }, 1000);
     startConnectivityListener();
 
 
   };
   const startConnectivityListener = () => {
     ConnectivityModule.startMonitoring();
+    AppResumeModule?.initLifecycleTracking?.();
   };
   const stopConnectivityListener = () => {
     ConnectivityModule.stopMonitoring();
+    
   };
 
   const handleRetry = () => {
@@ -163,7 +186,8 @@ const WebViewPage = () => {
       setWebData,
       BackgroundTaskModule,
       blutoothRef,
-      isPaymentProcess
+      isPaymentProcess,
+       AppResumeModule
     );
   };
   return (

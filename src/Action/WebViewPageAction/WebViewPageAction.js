@@ -6,119 +6,119 @@ import * as locationService from '../../Services/LocationServices';
 
 
 export const requestLocationPermission = async () => {
-  try {
-    if (Platform.OS !== 'android') return true;
+    try {
+        if (Platform.OS !== 'android') return true;
 
-    let isPermission = true;
+        let isPermission = true;
 
-    // Step 1: Request initial permissions
-    const granted = await PermissionsAndroid.requestMultiple([
-      PermissionsAndroid.PERMISSIONS.CAMERA,
-      PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE,
-      PermissionsAndroid.PERMISSIONS.READ_MEDIA_IMAGES,
-      PermissionsAndroid.PERMISSIONS.ACCESS_MEDIA_LOCATION,
-      PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
-      PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS
-    ]);
+        // Step 1: Request initial permissions
+        const granted = await PermissionsAndroid.requestMultiple([
+            PermissionsAndroid.PERMISSIONS.CAMERA,
+            PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE,
+            PermissionsAndroid.PERMISSIONS.READ_MEDIA_IMAGES,
+            PermissionsAndroid.PERMISSIONS.ACCESS_MEDIA_LOCATION,
+            PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+            PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS
+        ]);
 
-    const checkPermission = (perm) =>
-      granted[perm] === PermissionsAndroid.RESULTS.GRANTED;
+        const checkPermission = (perm) =>
+            granted[perm] === PermissionsAndroid.RESULTS.GRANTED;
 
-    if (
-      !checkPermission(PermissionsAndroid.PERMISSIONS.CAMERA) ||
-      !checkPermission(PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE) ||
-      !checkPermission(PermissionsAndroid.PERMISSIONS.READ_MEDIA_IMAGES) ||
-      !checkPermission(PermissionsAndroid.PERMISSIONS.ACCESS_MEDIA_LOCATION) ||
-      !checkPermission(PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION) ||
-      !checkPermission(PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS)
-    ) {
-      isPermission = false;
-    }
+        if (
+            !checkPermission(PermissionsAndroid.PERMISSIONS.CAMERA) ||
+            !checkPermission(PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE) ||
+            !checkPermission(PermissionsAndroid.PERMISSIONS.READ_MEDIA_IMAGES) ||
+            !checkPermission(PermissionsAndroid.PERMISSIONS.ACCESS_MEDIA_LOCATION) ||
+            !checkPermission(PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION) ||
+            !checkPermission(PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS)
+        ) {
+            isPermission = false;
+        }
 
-    // ✅ Step 2: Check if background location is already granted
-    const alreadyGranted = await PermissionsAndroid.check(
-      PermissionsAndroid.PERMISSIONS.ACCESS_BACKGROUND_LOCATION
-    );
+        // ✅ Step 2: Background location check only on Android 10+ (API 29+)
+        if (Platform.Version >= 29) {
+            const alreadyGranted = await PermissionsAndroid.check(
+                PermissionsAndroid.PERMISSIONS.ACCESS_BACKGROUND_LOCATION
+            );
 
-    if (alreadyGranted) {
-      return isPermission; // ✅ Don't ask again if already granted
-    }
+            if (alreadyGranted) {
+                return isPermission;
+            }
 
-    // Step 3: Show guidance alert ONCE if not granted
-    await new Promise((resolve) => {
-      Alert.alert(
-        'Background Location Required',
-        'To continue, please allow background location access and select "Allow all the time" on the next screen.',
-        [
-          {
-            text: 'Continue',
-            onPress: () => resolve(true)
-          }
-        ],
-        { cancelable: false }
-      );
-    });
+            // Step 3: Show guidance alert once
+            await new Promise((resolve) => {
+                Alert.alert(
+                    'Background Location Required',
+                    'To continue, please allow background location access and select "Allow all the time" on the next screen.',
+                    [
+                        {
+                            text: 'Continue',
+                            onPress: () => resolve(true)
+                        }
+                    ],
+                    { cancelable: false }
+                );
+            });
 
-    // Step 4: Request background location in a loop until granted or user opens settings
-    let loop = true;
-    while (loop) {
-      const bgGranted = await PermissionsAndroid.request(
-        PermissionsAndroid.PERMISSIONS.ACCESS_BACKGROUND_LOCATION
-      );
+            // Step 4: Request background location in a loop
+            let loop = true;
+            while (loop) {
+                const bgGranted = await PermissionsAndroid.request(
+                    PermissionsAndroid.PERMISSIONS.ACCESS_BACKGROUND_LOCATION
+                );
 
-      if (bgGranted === PermissionsAndroid.RESULTS.GRANTED) {
-        loop = false;
-        return isPermission;
-      } else if (bgGranted === PermissionsAndroid.RESULTS.DENIED) {
-        // Show retry alert
-        await new Promise((resolve) => {
-          Alert.alert(
-            'Permission Needed',
-            'Background location is required to proceed. Please allow it.',
-            [
-              {
-                text: 'Retry',
-                onPress: () => resolve(true)
-              }
-            ],
-            { cancelable: false }
-          );
-        });
-      } else if (bgGranted === PermissionsAndroid.RESULTS.NEVER_ASK_AGAIN) {
-        // Redirect to settings
-        await new Promise((resolve) => {
-          Alert.alert(
-            'Enable Permission',
-            'Background location permission has been permanently denied. Please enable it from app settings.',
-            [
-              {
-                text: 'Open Settings',
-                onPress: async () => {
-                  await Linking.openSettings();
-                  resolve(true);
+                if (bgGranted === PermissionsAndroid.RESULTS.GRANTED) {
+                    loop = false;
+                    return isPermission;
+                } else if (bgGranted === PermissionsAndroid.RESULTS.DENIED) {
+                    await new Promise((resolve) => {
+                        Alert.alert(
+                            'Permission Needed',
+                            'Background location is required to proceed. Please allow it.',
+                            [
+                                {
+                                    text: 'Retry',
+                                    onPress: () => resolve(true)
+                                }
+                            ],
+                            { cancelable: false }
+                        );
+                    });
+                } else if (bgGranted === PermissionsAndroid.RESULTS.NEVER_ASK_AGAIN) {
+                    await new Promise((resolve) => {
+                        Alert.alert(
+                            'Enable Permission',
+                            'Background location permission has been permanently denied. Please enable it from app settings.',
+                            [
+                                {
+                                    text: 'Open Settings',
+                                    onPress: async () => {
+                                        await Linking.openSettings();
+                                        resolve(true);
+                                    }
+                                }
+                            ],
+                            { cancelable: false }
+                        );
+                    });
                 }
-              }
-            ],
-            { cancelable: false }
-          );
-        });
-      }
-    }
+            }
+        }
 
-    return false;
-  } catch (err) {
-    console.warn('Permission error:', err);
-    return false;
-  }
+        return isPermission;
+    } catch (err) {
+        console.warn('Permission error:', err);
+        return false;
+    }
 };
 export const startLocationTracking = async (locationRef, webViewRef) => {
     try {
-        console.log('StartLocationTracking')
+        console.log('StartLocationTracking');
         const watchId = Geolocation.watchPosition(
             (position) => {
                 const { latitude, longitude, accuracy } = position.coords;
                 console.log('Location:', latitude, longitude, accuracy);
-                if (accuracy != null && accuracy <= 15) {
+                if (accuracy != null && accuracy <= 20) {
                     webViewRef?.current?.postMessage(JSON.stringify({ type: "Location", status: "success", data: { lat: latitude, lng: longitude } }));
                 }
             },
@@ -134,7 +134,7 @@ export const startLocationTracking = async (locationRef, webViewRef) => {
             }
 
         );
-
+        console.log(`Start location tracking... Watch ID: ${watchId}`);
         locationRef.current = watchId;
     } catch (error) {
         if (locationRef.current != null) {
@@ -163,16 +163,16 @@ export const stopTracking = async (locationRef) => {
     }
 };
 
-export const readWebViewMessage = async (event, webViewRef, locationRef, isCameraActive, setShowCamera, setIsVisible, setBluetoothEvent, setBtConnectionRequest, setWebData, BackgroundTaskModule, blutoothRef, isPaymentProcess) => {
+export const readWebViewMessage = async (event, webViewRef, locationRef, isCameraActive, setShowCamera, setIsVisible, setBluetoothEvent, setBtConnectionRequest, setWebData, BackgroundTaskModule, blutoothRef, isPaymentProcess, AppResumeModule) => {
     let data = event?.nativeEvent?.data;
     try {
         let msg = JSON.parse(data);
         switch (msg?.type) {
             case 'startLocationTracking':
-                console.log(`Start location tracking... Watch ID: ${locationRef.current}`);
-                startLocationTracking(locationRef, webViewRef);
+                // console.log('Starting location tracking...', msg?.data);
+                // startLocationTracking(locationRef, webViewRef);
 
-                checkBackgroundTaskStarted(BackgroundTaskModule, msg?.data?.userId, msg?.data?.dbPath, msg?.data?.travelPath);
+                // checkBackgroundTaskStarted(BackgroundTaskModule, msg?.data?.userId, msg?.data?.dbPath, msg?.data?.travelPath);
                 break;
             case 'openCamera':
                 const isLocationEnabled = await DeviceInfo.isLocationEnabled();
@@ -195,11 +195,12 @@ export const readWebViewMessage = async (event, webViewRef, locationRef, isCamer
                 break;
 
             case 'StartBackGroundService':
-                setWebData(pre => ({ ...pre, userId: msg?.data?.userId || "", dbPath: msg?.data?.dbPath || "", travelPath: msg?.data?.travelPath || "" }));
-                StartBackgroundTask(msg.data.userId, msg.data.dbPath, msg.data.travelPath, BackgroundTaskModule);
+                console.log('Starting background task...', msg.data);
+                StartBackgroundTask(msg.data.locationAccuracy, msg.data.locationUpdateInterval, msg.data.locationUpdateDistance, msg.data.locationSendInterval, BackgroundTaskModule);
+
                 break;
             case 'Logout':
-                StopBackGroundTask(BackgroundTaskModule);
+                StopBackGroundTask(BackgroundTaskModule, AppResumeModule);
                 stopTracking(locationRef);
                 break;
             case 'Exit_App':
@@ -226,6 +227,9 @@ export const readWebViewMessage = async (event, webViewRef, locationRef, isCamer
             case 'check-version':
                 checkAppVersion(msg?.data?.version, webViewRef);
                 break;
+            case 'App_Active':
+                handleBackGroundListners(msg);
+                break;
             default:
                 break;
         }
@@ -233,56 +237,86 @@ export const readWebViewMessage = async (event, webViewRef, locationRef, isCamer
         return;
     }
 };
+const handleBackGroundListners = async (msg, BackgroundTaskModule, webViewRef) => {
+    console.log('Handling background listeners...', msg);
+    let { locationAccuracy, locationUpdateInterval, locationUpdateDistance, locationSendInterval, version } = msg?.data;
 
+    // if (res) {
+    if (locationAccuracy && locationUpdateInterval && locationUpdateDistance && locationSendInterval) {
+        checkBackgroundTaskStarted(BackgroundTaskModule, locationAccuracy, locationUpdateInterval, locationUpdateDistance, locationSendInterval);
+        // }
+    }
+    let res = await checkAppVersion(version, webViewRef);
+    console.log(res);
+
+};
 export const checkAppVersion = async (version, webViewRef) => {
     if (version) {
-        const currentVersion = await DeviceInfo.getVersion();
-        const required = version?.toString()?.trim();
+        const currentVersion = await DeviceInfo.getVersion(); // gets the app version
+        const required = version?.toString()?.trim(); // ensures version is a trimmed string
+
+        // ✅ If versions match
         if (required === currentVersion?.toString()?.trim()) {
             webViewRef.current?.postMessage(JSON.stringify({ type: "Version_Valid" }));
+            return true;
         } else {
+            // ❌ Version mismatch
             webViewRef.current?.postMessage(JSON.stringify({ type: "Version_Expired" }));
+            return false;
         }
     } else {
-        console.warn("No version provided to check.");
+        // ❌ Version is not provided
+        webViewRef.current?.postMessage(JSON.stringify({ type: "Version_Expired" }));
+        return false;
     }
-}
-const StartBackgroundTask = (userId, dbPath, travelPath, BackgroundTaskModule) => {
-    BackgroundTaskModule.startBackgroundTask({
-        USER_ID: userId || "",
-        DB_PATH: dbPath || "",
-        TRAVEL_PATH: travelPath || "",
-    });
 };
 
-const StopBackGroundTask = (BackgroundTaskModule) => {
+const StartBackgroundTask = (locationAccuracy, locationUpdateInterval, locationUpdateDistance, locationSendInterval, BackgroundTaskModule) => {
+    BackgroundTaskModule.startBackgroundTask({
+        LOCATION_ACCURACY: locationAccuracy || "",
+        LOCATION_UPDATE_INTERVAL: locationUpdateInterval || "",
+        LOCATION_UPDATE_DISTANCE: locationUpdateDistance || "",
+        LOCATION_SEND_INTERVAL: locationSendInterval || "",
+    });
+};
+export const startTracking = (msg) => {
+    console.log('Starting location tracking...', msg?.data);
+    // startLocationTracking(locationRef, webViewRef);
+
+    // checkBackgroundTaskStarted(BackgroundTaskModule, msg?.data?.userId, msg?.data?.dbPath, msg?.data?.travelPath);
+
+};
+const StopBackGroundTask = (BackgroundTaskModule, AppResumeModule) => {
     BackgroundTaskModule.stopBackgroundTask();
+     AppResumeModule?.stopLifecycleTracking?.();
 };
 export const startSavingTraversalHistory = async (history) => {
     let data = JSON.parse(history);
     locationService.saveLocationHistory(data.path, data.distance, data.time, data.userId, data.travelPath, data.dbPath);
 };
-const checkBackgroundTaskStarted = (BackgroundTaskModule, userId, dbPath, travelPath) => {
-    if (!userId || !dbPath || !travelPath) {
-        console.warn("User ID, DB Path or Travel Path is undefined, skipping background task check.");
+const checkBackgroundTaskStarted = (BackgroundTaskModule, locationAccuracy, locationUpdateInterval, locationUpdateDistance, locationSendInterval) => {
+    console.log(locationAccuracy, locationUpdateInterval, locationUpdateDistance, locationSendInterval);
+    if (!locationAccuracy || !locationUpdateInterval || !locationUpdateDistance || !locationSendInterval) {
+        console.warn("Location Accuracy, Update Interval, Update Distance or Send Interval is undefined, skipping background task check.");
         return;
 
     }
     BackgroundTaskModule.checkAndRestartBackgroundTask({
-        USER_ID: userId || "",
-        DB_PATH: dbPath || "",
-        TRAVEL_PATH: travelPath || "",
+        LOCATION_ACCURACY: locationAccuracy || "",
+        LOCATION_UPDATE_INTERVAL: locationUpdateInterval || "",
+        LOCATION_UPDATE_DISTANCE: locationUpdateDistance || "",
+        LOCATION_SEND_INTERVAL: locationSendInterval || "",
     });
     return;
 };
 
 
-export const listenAndroidMessages = (refContext, webViewRef, locationRef, isDialogVisible,setStatus) => {
+export const listenAndroidMessages = (refContext, webViewRef, locationRef, isDialogVisible, setStatus) => {
 
     refContext.current.networkStatus = DeviceEventEmitter.addListener(
         'onConnectivityStatus',
         mobile => {
-            sendNetWorkStatus(mobile, webViewRef,setStatus);
+            sendNetWorkStatus(mobile, webViewRef, setStatus);
         }
     );
 
@@ -290,13 +324,14 @@ export const listenAndroidMessages = (refContext, webViewRef, locationRef, isDia
         'onLocationStatus',
         location => {
 
-            sendLocationStatus(location, webViewRef, locationRef,setStatus);
+            sendLocationStatus(location, webViewRef, locationRef, setStatus);
         }
 
     );
     refContext.current.appStatus = DeviceEventEmitter.addListener(
         'onSystemDialogStatus',
         appStatus => {
+            console.log('appStatus', appStatus);
             if (appStatus?.dialog) {
                 isDialogVisible.current = true;
             }
@@ -316,11 +351,11 @@ export const listenAndroidMessages = (refContext, webViewRef, locationRef, isDia
 
 
 
-const sendNetWorkStatus = (mobile, webViewRef,setStatus) => {
-    setStatus((prev) => ({ ...prev, networkStatus: !mobile?.isMobileDataOn  }));
+const sendNetWorkStatus = (mobile, webViewRef, setStatus) => {
+    setStatus((prev) => ({ ...prev, networkStatus: !mobile?.isMobileDataOn }));
 };
-const sendLocationStatus = (location, webViewRef, locationRef,setStatus) => {
-    setStatus((prev) => ({ ...prev, locationStatus: !location?.isLocationOn }));    
+const sendLocationStatus = (location, webViewRef, locationRef, setStatus) => {
+    setStatus((prev) => ({ ...prev, locationStatus: !location?.isLocationOn }));
 
     if (location?.isLocationOn === false) {
         stopTracking(locationRef);
@@ -581,5 +616,15 @@ const checkUserLocation = async (webViewRef) => {
             status: 'fail',
             data: { isLocationOn: false }
         }));
+    }
+};
+
+export const handleTravelHistory = (type, data, webViewRef) => {
+
+    if (type === 'avatar') {
+        webViewRef?.current?.postMessage(JSON.stringify({ type: "Location", status: "success", data: { lat: data.latitude, lng: data.longitude } }));
+    }
+    if (type === 'history') {
+        webViewRef?.current?.postMessage(JSON.stringify({ type: "travelHistory", data: { history: data.history||"", time: data.time||"" } }));
     }
 };

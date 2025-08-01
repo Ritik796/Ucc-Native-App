@@ -9,19 +9,38 @@ import androidx.core.content.ContextCompat
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.modules.core.DeviceEventManagerModule
+import org.json.JSONObject
 
 class TraversalReceiverModule(private val reactContext: ReactApplicationContext) :
     ReactContextBaseJavaModule(reactContext) {
 
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            // Validate the intent action for security
-            if (intent?.action != "com.wevois.TRAVERSAL_HISTORY") {
-                return
-            }
+            when (intent?.action) {
+                "AVATAR_LOCATION_UPDATE" -> {
+                    val lat = intent.getDoubleExtra("latitude", 0.0)
+                    val lng = intent.getDoubleExtra("longitude", 0.0)
 
-            val data = intent.getStringExtra("travel_history") ?: return
-            sendEvent(data)
+                    val locationData = JSONObject().apply {
+                        put("type", "avatar")
+                        put("latitude", lat)
+                        put("longitude", lng)
+                    }
+
+                    sendEvent("onAvatarLocationUpdate", locationData.toString())
+                }
+
+
+                "travel_history" -> {
+                    val data = intent.getStringExtra("travel_history") ?: return
+                    sendEvent("onTraversalUpdate", data)
+                }
+                "back_history" -> {
+                    val data = intent.getStringExtra("back_history") ?: return
+                    sendEvent("onTraversalUpdate", data)
+                }
+                else -> return
+            }
         }
     }
 
@@ -35,9 +54,11 @@ class TraversalReceiverModule(private val reactContext: ReactApplicationContext)
         if (isReceiverRegistered) return
 
         try {
-            val filter = IntentFilter("com.wevois.TRAVERSAL_HISTORY")
+            val filter = IntentFilter().apply {
+                addAction("AVATAR_LOCATION_UPDATE")
+                addAction("travel_history")
+            }
 
-            // Fix for Android 13+ compatibility - use RECEIVER_EXPORTED for external broadcasts
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 reactContext.registerReceiver(receiver, filter, Context.RECEIVER_EXPORTED)
             } else {
@@ -51,18 +72,16 @@ class TraversalReceiverModule(private val reactContext: ReactApplicationContext)
 
             isReceiverRegistered = true
         } catch (e: Exception) {
-            // Handle registration errors gracefully
             e.printStackTrace()
         }
     }
 
-    private fun sendEvent(data: String) {
+    private fun sendEvent(eventName: String, data: String) {
         try {
             reactContext
                 .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
-                .emit("onTraversalUpdate", data)
+                .emit(eventName, data)
         } catch (e: Exception) {
-            // Handle event sending errors
             e.printStackTrace()
         }
     }
@@ -82,7 +101,6 @@ class TraversalReceiverModule(private val reactContext: ReactApplicationContext)
                 reactContext.unregisterReceiver(receiver)
                 isReceiverRegistered = false
             } catch (e: Exception) {
-                // Handle unregistration errors gracefully
                 e.printStackTrace()
             }
         }

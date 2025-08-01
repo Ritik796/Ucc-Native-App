@@ -11,6 +11,7 @@ import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.ReactMethod
 import com.facebook.react.bridge.ReadableMap
+import com.wevois.paymentapp.appResumePackage.AppResumeModule
 import java.util.Calendar
 
 class BackgroundTaskModule(reactContext: ReactApplicationContext) :
@@ -34,25 +35,22 @@ class BackgroundTaskModule(reactContext: ReactApplicationContext) :
         lastStartTime = currentTime
 
         val context = reactApplicationContext
-        val userId = if (options.hasKey("USER_ID")) options.getString("USER_ID") else null
-        val dbPath = if (options.hasKey("DB_PATH")) options.getString("DB_PATH") else null
-        val travelPath = if (options.hasKey("TRAVEL_PATH")) options.getString("TRAVEL_PATH") else null
+        val accuracy = if (options.hasKey("LOCATION_ACCURACY")) options.getString("LOCATION_ACCURACY") else null
+        val updateDistance = if (options.hasKey("LOCATION_UPDATE_DISTANCE")) options.getString("LOCATION_UPDATE_DISTANCE") else null
+        val sendDelay = if (options.hasKey("LOCATION_SEND_INTERVAL")) options.getString("LOCATION_SEND_INTERVAL") else null
+        val updateInterval = if (options.hasKey("LOCATION_UPDATE_INTERVAL")) options.getString("LOCATION_UPDATE_INTERVAL") else null
 
-        Log.d("BackgroundTaskModule", "Received USER_ID: $userId")
-        Log.d("BackgroundTaskModule", "Received DB_PATH: $dbPath")
-        Log.d("BackgroundTaskModule", "Received TRAVEL_PATH: $travelPath")
-
-        if (userId.isNullOrEmpty() || dbPath.isNullOrEmpty() || travelPath.isNullOrEmpty()) {
-            Log.e("BackgroundTaskModule", "Missing USER_ID or DB_PATH or TRAVEL_PATH")
+        if (accuracy.isNullOrEmpty() || updateDistance.isNullOrEmpty() || sendDelay.isNullOrEmpty() || updateInterval.isNullOrEmpty()) {
+            Log.e("BackgroundTaskModule", "Missing accuracy : $accuracy or updateDistance : $updateDistance or sendDelay : $sendDelay  updateInterval : $updateInterval in checkAndRestartBackgroundTask")
             return
         }
 
-        Log.i("BackgroundTaskModule", "Starting MyTaskService with USER_ID: $userId and DB_PATH: $dbPath and TRAVEL_PATH : $travelPath")
 
         val serviceIntent = Intent(context, MyTaskService::class.java).apply {
-            putExtra("USER_ID", userId)
-            putExtra("DB_PATH", dbPath)
-            putExtra("TRAVEL_PATH",travelPath)
+            putExtra("LOCATION_ACCURACY", accuracy)
+            putExtra("LOCATION_UPDATE_DISTANCE", updateDistance)
+            putExtra("LOCATION_UPDATE_INTERVAL",updateInterval)
+            putExtra("LOCATION_SEND_INTERVAL",sendDelay)
         }
 
         // Version check for startForegroundService
@@ -61,7 +59,6 @@ class BackgroundTaskModule(reactContext: ReactApplicationContext) :
         } else {
             context.startService(serviceIntent)
         }
-
         startTimeChecker()
         Log.d("BackgroundTaskModule", "startForegroundService or startService called")
     }
@@ -70,21 +67,25 @@ class BackgroundTaskModule(reactContext: ReactApplicationContext) :
     fun checkAndRestartBackgroundTask(options: ReadableMap) {
         val context = reactApplicationContext
 
-        val userId = if (options.hasKey("USER_ID")) options.getString("USER_ID") else null
-        val dbPath = if (options.hasKey("DB_PATH")) options.getString("DB_PATH") else null
-        val travelPath = if (options.hasKey("TRAVEL_PATH")) options.getString("TRAVEL_PATH") else null
+        val accuracy = if (options.hasKey("LOCATION_ACCURACY")) options.getString("LOCATION_ACCURACY") else null
+        val updateDistance = if (options.hasKey("LOCATION_UPDATE_DISTANCE")) options.getString("LOCATION_UPDATE_DISTANCE") else null
+        val sendDelay = if (options.hasKey("LOCATION_SEND_INTERVAL")) options.getString("LOCATION_SEND_INTERVAL") else null
+        val updateInterval = if (options.hasKey("LOCATION_UPDATE_INTERVAL")) options.getString("LOCATION_UPDATE_INTERVAL") else null
 
-        if (userId.isNullOrEmpty() || dbPath.isNullOrEmpty() || travelPath.isNullOrEmpty()) {
-            Log.e("BackgroundTaskModule", "Missing USER_ID : $userId or DB_PATH : $dbPath or TRAVEL_PATH : $travelPath  in checkAndRestartBackgroundTask")
+
+
+        if (accuracy.isNullOrEmpty() || updateDistance.isNullOrEmpty() || sendDelay.isNullOrEmpty() || updateInterval.isNullOrEmpty()) {
+            Log.e("BackgroundTaskModule", "Missing accuracy : $accuracy or updateDistance : $updateDistance or sendDelay : $sendDelay  updateInterval : $updateInterval in checkAndRestartBackgroundTask")
             return
         }
 
         if (!isServiceRunning(MyTaskService::class.java)) {
             Log.i("BackgroundTaskModule", "Service not running. Restarting MyTaskService.")
             val serviceIntent = Intent(context, MyTaskService::class.java).apply {
-                putExtra("USER_ID", userId)
-                putExtra("DB_PATH", dbPath)
-                putExtra("TRAVEL_PATH",travelPath)
+                putExtra("LOCATION_ACCURACY", accuracy)
+                putExtra("LOCATION_UPDATE_DISTANCE", updateDistance)
+                putExtra("LOCATION_UPDATE_INTERVAL",updateInterval)
+                putExtra("LOCATION_SEND_INTERVAL",sendDelay)
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 context.startForegroundService(serviceIntent)
@@ -115,6 +116,7 @@ class BackgroundTaskModule(reactContext: ReactApplicationContext) :
         Log.d("stopBackgroundTask", "App killed and run")
         val serviceIntent = Intent(context, MyTaskService::class.java)
         context.stopService(serviceIntent)
+
         stopTimeChecker()
     }
 

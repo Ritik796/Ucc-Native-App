@@ -2,16 +2,19 @@ package com.wevois.paymentapp.appResumePackage
 
 import android.app.Activity
 import android.app.Application
+import android.content.Context
 import android.os.Bundle
 import android.util.Log
+import androidx.core.content.edit
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.ReactApplicationContext
-import com.facebook.react.bridge.ReactContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.modules.core.DeviceEventManagerModule
 
 class AppResumeModule(private val reactContext: ReactApplicationContext) :
     ReactContextBaseJavaModule(reactContext) {
+
+    private var lifecycleCallbacks: Application.ActivityLifecycleCallbacks? = null
 
     override fun getName(): String = "AppResumeModule"
 
@@ -21,47 +24,76 @@ class AppResumeModule(private val reactContext: ReactApplicationContext) :
         registerLifecycle()
     }
 
+    fun initLifecycleTracking() {
+        Log.d("AppResumeModule", "initialize called")
+        registerLifecycle()
+    }
+
+    fun stopLifecycleTracking() {
+        unregisterLifecycle()
+    }
+
     private fun registerLifecycle() {
+        Log.d("AppResumeModule", "Lifecycle Started")
+        if (lifecycleCallbacks != null) {
+            Log.d("AppResumeModule", "Lifecycle already registered")
+            return
+        }
+
         val app = reactContext.applicationContext as? Application
         if (app == null) {
             Log.e("AppResumeModule", "Application context is null")
             return
         }
 
-        Log.d("AppResumeModule", "registerLifecycle called")
-
-        app.registerActivityLifecycleCallbacks(object : Application.ActivityLifecycleCallbacks {
+        lifecycleCallbacks = object : Application.ActivityLifecycleCallbacks {
             override fun onActivityResumed(activity: Activity) {
                 Log.d("AppResumeModule", "onActivityResumed")
-                // You can also send false here if you want to reset the dialog status
-                sendDialogStatusToReactNative(reactContext, false)
+                setAppIsBackground(false)
+                sendDialogStatusToReactNative(false)
             }
 
             override fun onActivityPaused(activity: Activity) {
-                Log.d("AppResumeModule", "System dialog might be shown")
-                sendDialogStatusToReactNative(reactContext, true)
+                Log.d("AppResumeModule", "onActivityPaused")
+                setAppIsBackground(true)
+                sendDialogStatusToReactNative(true)
             }
 
             override fun onActivityStarted(activity: Activity) {}
-            override fun onActivityStopped(activity: Activity) {
-                Log.d("AppResumeModule", "System dialog might be shown")
-            }
+            override fun onActivityStopped(activity: Activity) {}
             override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {}
-            override fun onActivityDestroyed(activity: Activity) {
-                Log.d("AppResumeModule", "System onActivityDestroyed")
-            }
-            override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) {
-                Log.d("AppResumeModule", "System onActivitySaveInstanceState")
-            }
-        })
+            override fun onActivityDestroyed(activity: Activity) {}
+            override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) {}
+        }
+
+        app.registerActivityLifecycleCallbacks(lifecycleCallbacks!!)
+        Log.d("AppResumeModule", "Lifecycle registered")
     }
 
-    // ✅ Move this function outside the inner class
-    private fun sendDialogStatusToReactNative(reactContext: ReactContext, isVisible: Boolean) {
-        Log.d("AppResumeModule", "sendDialogStatusToReactNative: $isVisible")
+    private fun unregisterLifecycle() {
+        val app = reactContext.applicationContext as? Application
+        if (app != null && lifecycleCallbacks != null) {
+            app.unregisterActivityLifecycleCallbacks(lifecycleCallbacks!!)
+            Log.d("AppResumeModule", "Lifecycle unregistered")
+        }
+        lifecycleCallbacks = null
+    }
+
+    private fun setAppIsBackground(isAppBackground: Boolean) {
+        val sharedPreferences = reactContext.getSharedPreferences("service_pref", Context.MODE_PRIVATE)
+        sharedPreferences.edit {
+            putBoolean("isAppInBackground", isAppBackground)
+            apply()
+        }
+        Log.d("AppResumeModule", "isAppInBackground set to $isAppBackground")
+    }
+
+    private fun sendDialogStatusToReactNative(isVisible: Boolean) {
         val map = Arguments.createMap().apply {
             putBoolean("dialog", isVisible)
         }
+
+        Log.d("AppResumeModule", "Sending event to JS: onSystemDialogStatus = $isVisible")
 
         reactContext
             .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)

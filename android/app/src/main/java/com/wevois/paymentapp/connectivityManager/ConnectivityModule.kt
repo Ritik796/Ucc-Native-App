@@ -162,10 +162,17 @@ class ConnectivityModule(private val reactContext: ReactApplicationContext) :
     }
 
 
-  private  fun isDeviceLocationOn(context: Context): Boolean {
+   private fun isDeviceLocationOn(context: Context): Boolean {
         val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
-        return LocationManagerCompat.isLocationEnabled(locationManager)
+
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            LocationManagerCompat.isLocationEnabled(locationManager)
+        } else {
+            locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER) ||
+                    locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
+        }
     }
+
 
 
     @ReactMethod

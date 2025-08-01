@@ -69,10 +69,11 @@
               <receiver
                 android:name=".MyReceiver"
                 android:exported="false" />
-         <service
-            android:name=".MyTaskService"
-            android:foregroundServiceType="location"
-            android:exported="false" />
+        <service
+        android:name=".MyTaskService"
+        android:exported="true"
+        android:stopWithTask="false"
+        android:foregroundServiceType="location" />
       <!-- ✅ Your foreground service for check mobile location and data is on/off -->
             <receiver android:name=".ConnectivityModule"
                 android:exported="true">
