@@ -3,6 +3,7 @@ import { PermissionsAndroid, Platform, DeviceEventEmitter, BackHandler, Alert, L
 import Geolocation from "@react-native-community/geolocation";
 import DeviceInfo from "react-native-device-info";
 import * as locationService from '../../Services/LocationServices';
+import { getCurrentLocation } from "../../Services/commonFunctions";
 
 
 export const requestLocationPermission = async () => {
@@ -143,7 +144,6 @@ export const startLocationTracking = async (locationRef, webViewRef) => {
         }
     }
 };
-
 export const stopLocationTracking = (locationRef, setWebData) => {
     if (locationRef?.current) {
         Geolocation.clearWatch(locationRef.current);
@@ -154,7 +154,6 @@ export const stopLocationTracking = (locationRef, setWebData) => {
         }
     }
 };
-
 export const stopTracking = async (locationRef) => {
     if (locationRef?.current) {
         console.log(`Stopping location tracking... Watch ID: ${locationRef.current}`);
@@ -162,7 +161,6 @@ export const stopTracking = async (locationRef) => {
         locationRef.current = null;
     }
 };
-
 export const readWebViewMessage = async (event, webViewRef, locationRef, isCameraActive, setShowCamera, setIsVisible, setBluetoothEvent, setBtConnectionRequest, setWebData, BackgroundTaskModule, blutoothRef, isPaymentProcess, AppResumeModule) => {
     let data = event?.nativeEvent?.data;
     try {
@@ -230,6 +228,9 @@ export const readWebViewMessage = async (event, webViewRef, locationRef, isCamer
             case 'App_Active':
                 handleBackGroundListners(msg);
                 break;
+            case 'getCurrentLocation':
+                getCurrentLocation(msg?.attempt, msg?.delay, webViewRef);
+                break;
             default:
                 break;
         }
@@ -270,7 +271,6 @@ export const checkAppVersion = async (version, webViewRef) => {
         return false;
     }
 };
-
 const StartBackgroundTask = (locationAccuracy, locationUpdateInterval, locationUpdateDistance, locationSendInterval, BackgroundTaskModule) => {
     BackgroundTaskModule.startBackgroundTask({
         LOCATION_ACCURACY: locationAccuracy || "",
@@ -288,7 +288,7 @@ export const startTracking = (msg) => {
 };
 const StopBackGroundTask = (BackgroundTaskModule, AppResumeModule) => {
     BackgroundTaskModule.stopBackgroundTask();
-     AppResumeModule?.stopLifecycleTracking?.();
+    AppResumeModule?.stopLifecycleTracking?.();
 };
 export const startSavingTraversalHistory = async (history) => {
     let data = JSON.parse(history);
@@ -308,10 +308,7 @@ const checkBackgroundTaskStarted = (BackgroundTaskModule, locationAccuracy, loca
         LOCATION_SEND_INTERVAL: locationSendInterval || "",
     });
     return;
-};
-
-
-export const listenAndroidMessages = (refContext, webViewRef, locationRef, isDialogVisible, setStatus) => {
+}; export const listenAndroidMessages = (refContext, webViewRef, locationRef, isDialogVisible, setStatus) => {
 
     refContext.current.networkStatus = DeviceEventEmitter.addListener(
         'onConnectivityStatus',
@@ -348,9 +345,6 @@ export const listenAndroidMessages = (refContext, webViewRef, locationRef, isDia
         refContext?.current?.appStatus?.remove();
     };
 };
-
-
-
 const sendNetWorkStatus = (mobile, webViewRef, setStatus) => {
     setStatus((prev) => ({ ...prev, networkStatus: !mobile?.isMobileDataOn }));
 };
@@ -364,11 +358,9 @@ const sendLocationStatus = (location, webViewRef, locationRef, setStatus) => {
         startLocationTracking(locationRef, webViewRef);
     }
 };
-
 const handleExitApp = () => {
     BackHandler.exitApp();
 };
-
 const sendPaymentRequestToUrl = async (paymentPayload, url, deviceType, webViewRef) => {
     try {
         const response = await axios.post(url, paymentPayload, {
@@ -432,7 +424,6 @@ const sendPaymentRequestToUrl = async (paymentPayload, url, deviceType, webViewR
         webViewRef.current?.injectJavaScript(errorJS);
     }
 };
-
 const getPaymentStatusFromApi = (webViewRef, url, payloadData, deviceType) => {
     if (deviceType === 'pine') {
         checkPineTransactionStatus(webViewRef, url, payloadData);
@@ -463,8 +454,6 @@ const getPaymentStatusFromApi = (webViewRef, url, payloadData, deviceType) => {
         return () => clearInterval(intervalId);
     }
 };
-
-
 const checkPineTransactionStatus = (webViewRef, url, payloadData) => {
     let attempt = 1;
     const maxAttempts = 35;
@@ -535,7 +524,6 @@ const checkPineTransactionStatus = (webViewRef, url, payloadData) => {
         }
     }, 6000);
 };
-
 const checkOrangeTransactionStatus = async (webViewRef, url, payloadData, elapsedTime, control) => {
     try {
         const response = await axios.post(url, payloadData, {
@@ -601,7 +589,6 @@ const checkOrangeTransactionStatus = async (webViewRef, url, payloadData, elapse
         }
     }
 };
-
 const checkUserLocation = async (webViewRef) => {
     const isLocationEnabled = await DeviceInfo.isLocationEnabled();
     if (isLocationEnabled) {
@@ -618,13 +605,12 @@ const checkUserLocation = async (webViewRef) => {
         }));
     }
 };
-
 export const handleTravelHistory = (type, data, webViewRef) => {
 
     if (type === 'avatar') {
         webViewRef?.current?.postMessage(JSON.stringify({ type: "Location", status: "success", data: { lat: data.latitude, lng: data.longitude } }));
     }
     if (type === 'history') {
-        webViewRef?.current?.postMessage(JSON.stringify({ type: "travelHistory", data: { history: data.history||"", time: data.time||"" } }));
+        webViewRef?.current?.postMessage(JSON.stringify({ type: "travelHistory", data: { history: data.history || "", time: data.time || "" } }));
     }
 };
