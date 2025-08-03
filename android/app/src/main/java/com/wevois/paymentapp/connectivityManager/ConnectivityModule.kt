@@ -18,7 +18,7 @@ import androidx.core.location.LocationManagerCompat
 import com.facebook.react.bridge.*
 import com.facebook.react.modules.core.DeviceEventManagerModule
 import java.util.Calendar
-//import android.provider.Settings
+import android.provider.Settings
 
 class ConnectivityModule(private val reactContext: ReactApplicationContext) :
     ReactContextBaseJavaModule(reactContext) {
@@ -136,7 +136,7 @@ class ConnectivityModule(private val reactContext: ReactApplicationContext) :
     }
 
     private fun sendOnlyLocationStatus() {
-        val isLocation = isDeviceLocationOn(reactContext)
+        val isLocation = isDeviceLocationHighAccuracy(reactContext)
         Log.d("ConnectivityModule", "Location status: isLocation=$isLocation")
 
         val locationMap = Arguments.createMap().apply {
@@ -161,15 +161,22 @@ class ConnectivityModule(private val reactContext: ReactApplicationContext) :
                         capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR))
     }
 
+    @Suppress("DEPRECATION")
+   private fun isDeviceLocationHighAccuracy(context: Context): Boolean {
+        val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
+            ?: return false
 
-   private fun isDeviceLocationOn(context: Context): Boolean {
-        val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+        // For Android Q (API 29) and above
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            return LocationManagerCompat.isLocationEnabled(locationManager)
+        }
 
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            LocationManagerCompat.isLocationEnabled(locationManager)
-        } else {
-            locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER) ||
-                    locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
+        // For Android 4.4 (KitKat) to Android 9 (Pie)
+        return try {
+            val mode = Settings.Secure.getInt(context.contentResolver, Settings.Secure.LOCATION_MODE)
+            mode == Settings.Secure.LOCATION_MODE_HIGH_ACCURACY
+        } catch (e: Settings.SettingNotFoundException) {
+            false
         }
     }
 

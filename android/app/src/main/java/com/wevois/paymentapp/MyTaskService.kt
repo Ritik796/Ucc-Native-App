@@ -1,30 +1,37 @@
 package com.wevois.paymentapp
 
+
 import android.annotation.SuppressLint
 import android.app.*
 import android.content.Context
 import android.content.Intent
 import android.hardware.*
-import android.location.*
-import android.media.RingtoneManager
+import android.location.Location
+
 import android.os.*
 import android.util.Log
+import androidx.core.app.NotificationCompat
+import androidx.core.content.edit
 import com.facebook.react.HeadlessJsTaskService
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.jstasks.HeadlessJsTaskConfig
+import com.google.android.gms.location.*
+import com.google.android.gms.location.LocationRequest
+import org.json.JSONArray
+import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.math.*
-import androidx.core.content.edit
-import androidx.core.location.LocationManagerCompat
-import org.json.JSONObject
+
 
 class MyTaskService : HeadlessJsTaskService() {
 
-    private lateinit var locationManager: LocationManager
-    private lateinit var locationListener: LocationListener
+    private lateinit var fusedClient: FusedLocationProviderClient
+
+    private lateinit var locationCallback: LocationCallback
+
     private lateinit var sensorManager: SensorManager
-    private lateinit var motionSensorListener: SensorEventListener
+    private var motionSensorListener: SensorEventListener? = null
     private var wakeLock: PowerManager.WakeLock? = null
 
     private val handler = Handler(Looper.getMainLooper())
@@ -37,36 +44,31 @@ class MyTaskService : HeadlessJsTaskService() {
 
     private var previousLat: Double? = null
     private var previousLng: Double? = null
-    private var maxDistanceCanCover = 15
     private val maxDistance = 15
+    private var maxDistanceCanCover = maxDistance
     private var minuteDistance: Double = 0.0
     private val traversalHistory = StringBuilder()
-    private var hasFirstFix = false
-
     private var isDeviceMoving = false
     private var lastAcceleration = FloatArray(3)
-    private var accelerationThreshold = 0.5f
-    private var pendingTraversalHistory: StringBuilder? = null
+    private val accelerationThreshold = 0.5f
     private val backgroundTravelHistoryList = mutableListOf<JSONObject>()
 
     override fun onCreate() {
         super.onCreate()
         startForegroundServiceWithNotification()
-        locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
-        sensorManager = getSystemService(SENSOR_SERVICE) as SensorManager
+        fusedClient = LocationServices.getFusedLocationProviderClient(this)
+        sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
         setupMotionSensor()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        reqLocAccuracy = intent?.getStringExtra("LOCATION_ACCURACY") ?: ""
-        reqLocDistance = intent?.getStringExtra("LOCATION_UPDATE_DISTANCE") ?: ""
-        reqLocInterval = intent?.getStringExtra("LOCATION_UPDATE_INTERVAL") ?: ""
-        reqLocSendInterval = intent?.getStringExtra("LOCATION_SEND_INTERVAL") ?: ""
-        startLocationTracking()
+        reqLocAccuracy = intent?.getStringExtra("LOCATION_ACCURACY") ?: "15"
+        reqLocDistance = intent?.getStringExtra("LOCATION_UPDATE_DISTANCE") ?: "1"
+        reqLocInterval = intent?.getStringExtra("LOCATION_UPDATE_INTERVAL") ?: "3000"
+        reqLocSendInterval = intent?.getStringExtra("LOCATION_SEND_INTERVAL") ?: "1"
         acquireWakeLock()
         setServiceRunning(true)
-
-
+        startFusedLocationTracking()
         return START_STICKY
     }
 
@@ -74,13 +76,17 @@ class MyTaskService : HeadlessJsTaskService() {
     private fun acquireWakeLock() {
         if (wakeLock == null || !wakeLock!!.isHeld) {
             val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
-            wakeLock = powerManager.newWakeLock(
-                PowerManager.PARTIAL_WAKE_LOCK,
-                "LocationTrackingWakeLock"
-            )
-            wakeLock?.acquire(2 * 60 * 1000L) // 2 minutes
+            wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "LocationTrackingWakeLock")
+            wakeLock?.acquire(10 * 60 * 1000L)
             Log.d("WakeLock", "Wake lock acquired")
         }
+    }
+
+    private fun renewWakeLockIfNeeded() {
+        if (wakeLock?.isHeld == true) {
+            wakeLock?.release()
+        }
+        acquireWakeLock()
     }
 
     private fun releaseWakeLock() {
@@ -92,116 +98,90 @@ class MyTaskService : HeadlessJsTaskService() {
     }
 
     @SuppressLint("MissingPermission")
-    private fun startLocationTracking() {
-        Log.d("LocationUpdate", "startTracking called")
+    private fun startFusedLocationTracking() {
         val intervalMillis = reqLocInterval.toLongOrNull() ?: 3000L
-        val distanceMeters = reqLocDistance.toIntOrNull()?.toFloat() ?: 1f
-        val locAccuracy = reqLocAccuracy.toFloatOrNull() ?: 15f
-        Log.d("LocationUpdate"," intervalMillis $intervalMillis distanceMeters : $distanceMeters locAccuracy : $locAccuracy ")
-        locationListener = object : LocationListener {
-            override fun onLocationChanged(location: Location) {
-                val lat = location.latitude
-                val lng = location.longitude
-                val acc = location.accuracy
-                Log.d("LocationUpdate", "Lat: $lat, Lng: $lng, Accuracy: $acc")
-                if (acc > locAccuracy) return
-                if (previousLat == null || previousLng == null) {
-                    previousLat = lat
-                    previousLng = lng
-                    hasFirstFix = true
-                    traversalHistory.append("($lat,$lng)")
-                    sendAvatarLocationToWebView(lat, lng)
-                    saveDataToDatabase(traversalHistory.toString())
-                    return
+        val distanceMeters = reqLocDistance.toFloatOrNull() ?: 1f
+
+        val locationRequest = LocationRequest.Builder(
+            Priority.PRIORITY_HIGH_ACCURACY,  // priority
+            intervalMillis                    // interval in milliseconds
+        ).apply {
+            setMinUpdateIntervalMillis(intervalMillis / 2)    // fastest interval
+            setMinUpdateDistanceMeters(distanceMeters)        // minimum distance change
+        }.build()
+
+
+        locationCallback = object : LocationCallback() {
+            override fun onLocationResult(result: LocationResult) {
+                for (location in result.locations) {
+                    handleLocationUpdate(location)
                 }
-                val latDiff = abs(previousLat!! - lat)
-                val lngDiff = abs(previousLng!! - lng)
-
-                if (!isDeviceMoving && latDiff < 0.00005 && lngDiff < 0.00005) {
-                    Log.d("LocationUpdate", "Ignored minor GPS jitter.")
-                    return
-                }
-
-                val distance = getDistance(previousLat!!, previousLng!!, lat, lng)
-                val shouldAddPoint = distance in 0.1..maxDistanceCanCover.toDouble()
-
-                if (shouldAddPoint) {
-                    if (traversalHistory.isNotEmpty() && traversalHistory.last() != '~') {
-                        traversalHistory.append("~")
-                    }
-                    traversalHistory.append("($lat,$lng)")
-                    minuteDistance += distance
-                    sendAvatarLocationToWebView(lat, lng)
-                } else if (distance != 0.0) {
-                    maxDistanceCanCover += maxDistance
-                }
-
-                previousLat = lat
-                previousLng = lng
             }
-
-            override fun onProviderEnabled(provider: String) {
-                Log.d("LocationUpdate", "$provider enabled")
-            }
-
-            override fun onProviderDisabled(provider: String) {
-                Log.d("LocationUpdate", "$provider disabled")
-            }
-
-            @Deprecated("Deprecated in Java")
-            override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
         }
 
-        locationManager.requestLocationUpdates(
-            LocationManager.GPS_PROVIDER,
-            intervalMillis,
-            distanceMeters,
-            locationListener
-        )
+        fusedClient.requestLocationUpdates(locationRequest, locationCallback, Looper.getMainLooper())
+
         saveRunnable = object : Runnable {
             override fun run() {
-                acquireWakeLock() // Reacquire each minute
+                renewWakeLockIfNeeded()
                 if (traversalHistory.isNotEmpty()) {
-                    if (isLocationTurnedOn()) {
-                        if (!pendingTraversalHistory.isNullOrEmpty()) {
-                            if (pendingTraversalHistory!!.last() != '~') pendingTraversalHistory!!.append("~")
-                            while (pendingTraversalHistory!!.endsWith("~")) pendingTraversalHistory!!.setLength(pendingTraversalHistory!!.length - 1)
-                            if (traversalHistory.first() == '~') traversalHistory.deleteCharAt(0)
-                            pendingTraversalHistory!!.append("~").append(traversalHistory)
-                            traversalHistory.clear()
-                            traversalHistory.append(pendingTraversalHistory.toString())
-                            pendingTraversalHistory = null
-                        }
-
-                        while (traversalHistory.endsWith("~")) traversalHistory.setLength(traversalHistory.length - 1)
-
-                        saveDataToDatabase(traversalHistory.toString())
-                        traversalHistory.clear()
-                        minuteDistance = 0.0
-                        maxDistanceCanCover = maxDistance
-                    } else {
-                        if (pendingTraversalHistory == null) pendingTraversalHistory = StringBuilder()
-                        if (pendingTraversalHistory!!.isNotEmpty() && pendingTraversalHistory!!.last() != '~') {
-                            pendingTraversalHistory!!.append("~")
-                        }
-                        if (traversalHistory.first() == '~') traversalHistory.deleteCharAt(0)
-                        pendingTraversalHistory!!.append(traversalHistory)
-                        traversalHistory.clear()
-                        Log.d("LocationUpdate", "Location disabled. Stored to pending.")
-                    }
+                    while (traversalHistory.endsWith("~")) traversalHistory.setLength(traversalHistory.length - 1)
+                    saveDataToDatabase(traversalHistory.toString())
+                    traversalHistory.clear()
+                    minuteDistance = 0.0
+                    maxDistanceCanCover = maxDistance
                 }
-
                 handler.postDelayed(this, getDelayToNextMinute())
             }
         }
-
         handler.postDelayed(saveRunnable, getDelayToNextMinute())
     }
 
+    private fun handleLocationUpdate(location: Location) {
+        val lat = location.latitude
+        val lng = location.longitude
+        val acc = location.accuracy
+        Log.d("LocationUpdate", "Lat: $lat, Lng: $lng, Accuracy: $acc")
+        val requiredLocationAccuracy: Float = reqLocAccuracy.toFloatOrNull() ?: 15f
+        if(acc > requiredLocationAccuracy) return
+        if (previousLat == null || previousLng == null) {
+            previousLat = lat
+            previousLng = lng
+            traversalHistory.append("($lat,$lng)")
+            sendAvatarLocationToWebView(lat, lng)
+            saveDataToDatabase(traversalHistory.toString())
+            return
+        }
+
+        val latDiff = abs(previousLat!! - lat)
+        val lngDiff = abs(previousLng!! - lng)
+
+        if (!isDeviceMoving && latDiff < 0.00005 && lngDiff < 0.00005) {
+            Log.d("LocationUpdate", "Ignored minor GPS jitter.")
+            return
+        }
+
+        val distance = getDistance(previousLat!!, previousLng!!, lat, lng)
+        if (distance in 0.1..maxDistanceCanCover.toDouble()) {
+            if (traversalHistory.isNotEmpty() && traversalHistory.last() != '~') {
+                traversalHistory.append("~")
+            }
+            traversalHistory.append("($lat,$lng)")
+            minuteDistance += distance
+            sendAvatarLocationToWebView(lat, lng)
+        } else if (distance != 0.0) {
+            maxDistanceCanCover += maxDistance
+        }
+
+        previousLat = lat
+        previousLng = lng
+    }
+
     private fun sendAvatarLocationToWebView(lat: Double, lng: Double) {
-        val intent = Intent("AVATAR_LOCATION_UPDATE")
-        intent.putExtra("latitude", lat)
-        intent.putExtra("longitude", lng)
+        val intent = Intent("AVATAR_LOCATION_UPDATE").apply {
+            putExtra("latitude", lat)
+            putExtra("longitude", lng)
+        }
         sendBroadcast(intent)
         Log.d("LocationUpdate", "Broadcast sent: ($lat, $lng)")
     }
@@ -213,29 +193,23 @@ class MyTaskService : HeadlessJsTaskService() {
             put("history", history)
         }
 
-        val intent = Intent("travel_history")
-
         if (isAppInBackground(applicationContext)) {
             backgroundTravelHistoryList.add(jsonObj)
-            Log.d("LocationUpdate", "App is in background. Stored to backgroundTravelHistoryList: $jsonObj")
+            Log.d("LocationUpdate", "App in background. Stored: $jsonObj")
         } else {
-            // If there are background entries, send them as JSONArray
             if (backgroundTravelHistoryList.isNotEmpty()) {
-                val jsonArray = org.json.JSONArray()
+                val jsonArray = JSONArray()
                 backgroundTravelHistoryList.forEach { jsonArray.put(it) }
-
-                intent.putExtra("back_history", jsonArray.toString())
+                jsonObj.put("back_history", jsonArray)
                 backgroundTravelHistoryList.clear()
-                Log.d("LocationUpdate", "Sending back_history to web: $jsonArray")
             }
-
-            // Send current travel history
-            intent.putExtra("travel_history", jsonObj.toString())
+            val intent = Intent("travel_history").apply {
+                putExtra("travel_history", jsonObj.toString())
+            }
             sendBroadcast(intent)
-            Log.d("LocationUpdate", "Sending travel_history to web: $jsonObj")
+            Log.d("LocationUpdate", "Broadcast travel_history: $jsonObj")
         }
     }
-
 
     private fun getDelayToNextMinute(): Long {
         val now = Calendar.getInstance()
@@ -249,23 +223,11 @@ class MyTaskService : HeadlessJsTaskService() {
     }
 
     private fun getDistance(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
-        val earthRadius = 6371000.0
+        val r = 6371000.0
         val dLat = Math.toRadians(lat2 - lat1)
         val dLon = Math.toRadians(lon2 - lon1)
         val a = sin(dLat / 2).pow(2.0) + cos(Math.toRadians(lat1)) * cos(Math.toRadians(lat2)) * sin(dLon / 2).pow(2.0)
-        val c = 2 * atan2(sqrt(a), sqrt(1 - a))
-        return earthRadius * c
-    }
-
-    private fun isLocationTurnedOn(): Boolean {
-        val locationManager = applicationContext.getSystemService(Context.LOCATION_SERVICE) as LocationManager
-
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            LocationManagerCompat.isLocationEnabled(locationManager)
-        } else {
-            locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER) ||
-                    locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
-        }
+        return 2 * r * atan2(sqrt(a), sqrt(1 - a))
     }
 
     private val setServiceRunning: (Boolean) -> Unit = { isRunning ->
@@ -275,27 +237,26 @@ class MyTaskService : HeadlessJsTaskService() {
     }
 
     private fun isAppInBackground(context: Context): Boolean {
-        val sharedPreferences = context.getSharedPreferences("service_pref", Context.MODE_PRIVATE)
-        return sharedPreferences.getBoolean("isAppInBackground", false)
+        val sp = context.getSharedPreferences("service_pref", Context.MODE_PRIVATE)
+        return sp.getBoolean("isAppInBackground", false)
     }
 
     private fun setupMotionSensor() {
+        val accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
         motionSensorListener = object : SensorEventListener {
             override fun onSensorChanged(event: SensorEvent?) {
-                if (event?.sensor?.type == Sensor.TYPE_ACCELEROMETER) {
-                    val dx = abs(lastAcceleration[0] - event.values[0])
-                    val dy = abs(lastAcceleration[1] - event.values[1])
-                    val dz = abs(lastAcceleration[2] - event.values[2])
+                event?.let {
+                    val dx = abs(lastAcceleration[0] - it.values[0])
+                    val dy = abs(lastAcceleration[1] - it.values[1])
+                    val dz = abs(lastAcceleration[2] - it.values[2])
                     val total = sqrt((dx * dx + dy * dy + dz * dz).toDouble())
                     isDeviceMoving = total > accelerationThreshold
-                    lastAcceleration = event.values.clone()
+                    lastAcceleration = it.values.clone()
                 }
             }
 
             override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
         }
-
-        val accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
         sensorManager.registerListener(motionSensorListener, accelerometer, SensorManager.SENSOR_DELAY_NORMAL)
     }
 
@@ -303,19 +264,14 @@ class MyTaskService : HeadlessJsTaskService() {
     private fun startForegroundServiceWithNotification() {
         val channelId = "MyTaskServiceChannel"
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                channelId, "Background Service", NotificationManager.IMPORTANCE_DEFAULT
-            ).apply {
-                enableVibration(true)
-                setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION), null)
-            }
+            val channel = NotificationChannel(channelId, "Background Service", NotificationManager.IMPORTANCE_LOW)
             val manager = getSystemService(NotificationManager::class.java)
             manager?.createNotificationChannel(channel)
         }
 
-        val notification = Notification.Builder(this, channelId)
+        val notification = NotificationCompat.Builder(this, channelId)
             .setContentTitle("WeVOIS Payment App")
-            .setContentText("Background service running")
+            .setContentText("Background service is running")
             .setOngoing(true)
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .build()
@@ -325,8 +281,8 @@ class MyTaskService : HeadlessJsTaskService() {
 
     override fun onDestroy() {
         handler.removeCallbacks(saveRunnable)
-        locationManager.removeUpdates(locationListener)
-        sensorManager.unregisterListener(motionSensorListener)
+        fusedClient.removeLocationUpdates(locationCallback)
+        motionSensorListener?.let { sensorManager.unregisterListener(it) }
         releaseWakeLock()
         @Suppress("DEPRECATION")
         stopForeground(true)

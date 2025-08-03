@@ -35,10 +35,7 @@ class TraversalReceiverModule(private val reactContext: ReactApplicationContext)
                     val data = intent.getStringExtra("travel_history") ?: return
                     sendEvent("onTraversalUpdate", data)
                 }
-                "back_history" -> {
-                    val data = intent.getStringExtra("back_history") ?: return
-                    sendEvent("onTraversalUpdate", data)
-                }
+
                 else -> return
             }
         }

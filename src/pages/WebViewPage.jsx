@@ -76,7 +76,6 @@ const WebViewPage = () => {
       'onAvatarLocationUpdate',
       avatar => {
         const data = JSON.parse(avatar);
-        console.log('avator', data);
         action.handleTravelHistory('avatar', data, webViewRef);
 
       }
@@ -85,14 +84,14 @@ const WebViewPage = () => {
       'onTraversalUpdate',
       history => {
         const data = JSON.parse(history);
-        console.log('history', data);
         action.handleTravelHistory('history', data, webViewRef);
 
       }
     );
 
     return () => {
-      travelSub.remove();
+      travelSub?.remove();
+      avatorSub?.remove();
     };
   }, []);
   const handleAppStateChange = async nextAppState => {
@@ -221,7 +220,7 @@ const WebViewPage = () => {
             key={webKey}
             ref={webViewRef}
             onMessage={handleMessage}
-            source={{ uri: 'https://fir-project-d59e1.web.app' }}
+            source={{ uri: ' https://fir-project-d59e1.web.app' }}
             style={{ flex: 1, minHeight: '100%' }} // ✅ Ensure full height
             geolocationEnabled={true}
             mediaPlaybackRequiresUserAction={false}

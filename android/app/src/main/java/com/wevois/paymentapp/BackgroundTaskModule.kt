@@ -11,15 +11,21 @@ import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.ReactMethod
 import com.facebook.react.bridge.ReadableMap
-import com.wevois.paymentapp.appResumePackage.AppResumeModule
 import java.util.Calendar
+import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkManager
+import androidx.work.Data
+import androidx.work.ExistingWorkPolicy
+import androidx.work.OneTimeWorkRequestBuilder
+import java.util.concurrent.TimeUnit
 
 class BackgroundTaskModule(reactContext: ReactApplicationContext) :
     ReactContextBaseJavaModule(reactContext) {
 
     private var lastStartTime = 0L
     private val minStartInterval = 10_000L // 10 seconds
-
+    private val handler = Handler(Looper.getMainLooper())
+    private var runnable: Runnable? = null
     override fun getName(): String {
         return "BackgroundTaskModule"
     }
@@ -116,12 +122,10 @@ class BackgroundTaskModule(reactContext: ReactApplicationContext) :
         Log.d("stopBackgroundTask", "App killed and run")
         val serviceIntent = Intent(context, MyTaskService::class.java)
         context.stopService(serviceIntent)
-
         stopTimeChecker()
     }
 
-    private val handler = Handler(Looper.getMainLooper())
-    private var runnable: Runnable? = null
+
 
     private fun startTimeChecker() {
         runnable = object : Runnable {

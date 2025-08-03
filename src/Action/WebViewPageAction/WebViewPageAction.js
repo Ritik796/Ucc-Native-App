@@ -167,9 +167,7 @@ export const readWebViewMessage = async (event, webViewRef, locationRef, isCamer
         let msg = JSON.parse(data);
         switch (msg?.type) {
             case 'startLocationTracking':
-                // console.log('Starting location tracking...', msg?.data);
-                // startLocationTracking(locationRef, webViewRef);
-
+                startLocationTracking(locationRef, webViewRef);
                 // checkBackgroundTaskStarted(BackgroundTaskModule, msg?.data?.userId, msg?.data?.dbPath, msg?.data?.travelPath);
                 break;
             case 'openCamera':
@@ -226,6 +224,7 @@ export const readWebViewMessage = async (event, webViewRef, locationRef, isCamer
                 checkAppVersion(msg?.data?.version, webViewRef);
                 break;
             case 'App_Active':
+                checkAppVersion(msg?.data?.version, webViewRef);
                 handleBackGroundListners(msg);
                 break;
             case 'getCurrentLocation':
@@ -238,24 +237,19 @@ export const readWebViewMessage = async (event, webViewRef, locationRef, isCamer
         return;
     }
 };
-const handleBackGroundListners = async (msg, BackgroundTaskModule, webViewRef) => {
-    console.log('Handling background listeners...', msg);
-    let { locationAccuracy, locationUpdateInterval, locationUpdateDistance, locationSendInterval, version } = msg?.data;
-
-    // if (res) {
+const handleBackGroundListners = async (msg, BackgroundTaskModule) => {
+    let { locationAccuracy, locationUpdateInterval, locationUpdateDistance, locationSendInterval } = msg?.data;
     if (locationAccuracy && locationUpdateInterval && locationUpdateDistance && locationSendInterval) {
         checkBackgroundTaskStarted(BackgroundTaskModule, locationAccuracy, locationUpdateInterval, locationUpdateDistance, locationSendInterval);
-        // }
     }
-    let res = await checkAppVersion(version, webViewRef);
-    console.log(res);
+
 
 };
 export const checkAppVersion = async (version, webViewRef) => {
+
     if (version) {
         const currentVersion = await DeviceInfo.getVersion(); // gets the app version
         const required = version?.toString()?.trim(); // ensures version is a trimmed string
-
         // ✅ If versions match
         if (required === currentVersion?.toString()?.trim()) {
             webViewRef.current?.postMessage(JSON.stringify({ type: "Version_Valid" }));
@@ -279,13 +273,8 @@ const StartBackgroundTask = (locationAccuracy, locationUpdateInterval, locationU
         LOCATION_SEND_INTERVAL: locationSendInterval || "",
     });
 };
-export const startTracking = (msg) => {
-    console.log('Starting location tracking...', msg?.data);
-    // startLocationTracking(locationRef, webViewRef);
 
-    // checkBackgroundTaskStarted(BackgroundTaskModule, msg?.data?.userId, msg?.data?.dbPath, msg?.data?.travelPath);
 
-};
 const StopBackGroundTask = (BackgroundTaskModule, AppResumeModule) => {
     BackgroundTaskModule.stopBackgroundTask();
     AppResumeModule?.stopLifecycleTracking?.();
@@ -295,7 +284,6 @@ export const startSavingTraversalHistory = async (history) => {
     locationService.saveLocationHistory(data.path, data.distance, data.time, data.userId, data.travelPath, data.dbPath);
 };
 const checkBackgroundTaskStarted = (BackgroundTaskModule, locationAccuracy, locationUpdateInterval, locationUpdateDistance, locationSendInterval) => {
-    console.log(locationAccuracy, locationUpdateInterval, locationUpdateDistance, locationSendInterval);
     if (!locationAccuracy || !locationUpdateInterval || !locationUpdateDistance || !locationSendInterval) {
         console.warn("Location Accuracy, Update Interval, Update Distance or Send Interval is undefined, skipping background task check.");
         return;
@@ -328,7 +316,6 @@ const checkBackgroundTaskStarted = (BackgroundTaskModule, locationAccuracy, loca
     refContext.current.appStatus = DeviceEventEmitter.addListener(
         'onSystemDialogStatus',
         appStatus => {
-            console.log('appStatus', appStatus);
             if (appStatus?.dialog) {
                 isDialogVisible.current = true;
             }
@@ -611,6 +598,6 @@ export const handleTravelHistory = (type, data, webViewRef) => {
         webViewRef?.current?.postMessage(JSON.stringify({ type: "Location", status: "success", data: { lat: data.latitude, lng: data.longitude } }));
     }
     if (type === 'history') {
-        webViewRef?.current?.postMessage(JSON.stringify({ type: "travelHistory", data: { history: data.history || "", time: data.time || "" } }));
+        webViewRef?.current?.postMessage(JSON.stringify({ type: "travelHistory", data: { history: data.history||"", time: data.time||"",backHistory:data?.back_history?.length>0?data.back_history:[] } }));
     }
 };
