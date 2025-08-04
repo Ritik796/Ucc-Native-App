@@ -1,4 +1,4 @@
-package com.wevois.paymentapp;
+package com.wevois.paymentapp
 import com.facebook.react.ReactActivity
 import com.facebook.react.ReactActivityDelegate
 import com.facebook.react.defaults.DefaultNewArchitectureEntryPoint.fabricEnabled

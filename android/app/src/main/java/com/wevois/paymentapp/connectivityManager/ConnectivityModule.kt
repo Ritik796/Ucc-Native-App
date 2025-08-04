@@ -18,7 +18,6 @@ import com.facebook.react.bridge.*
 import com.facebook.react.modules.core.DeviceEventManagerModule
 import java.util.Calendar
 import android.provider.Settings
-import androidx.core.net.toUri
 
 class ConnectivityModule(private val reactContext: ReactApplicationContext) :
     ReactContextBaseJavaModule(reactContext) {
@@ -179,44 +178,6 @@ class ConnectivityModule(private val reactContext: ReactApplicationContext) :
             false
         }
     }
-
-    @ReactMethod
-    fun openAutoStartSettings() {
-        try {
-            val intent = Intent()
-            val manufacturer = Build.MANUFACTURER.lowercase()
-
-            when {
-                manufacturer.contains("xiaomi") -> {
-                    intent.setClassName("com.miui.securitycenter", "com.miui.permcenter.autostart.AutoStartManagementActivity")
-                }
-                manufacturer.contains("oppo") -> {
-                    intent.setClassName("com.coloros.safecenter", "com.coloros.safecenter.startupapp.StartupAppListActivity")
-                }
-                manufacturer.contains("vivo") -> {
-                    intent.setClassName("com.vivo.permissionmanager", "com.vivo.permissionmanager.activity.BgStartUpManagerActivity")
-                }
-                manufacturer.contains("realme") -> {
-                    intent.setClassName("com.realme.securitycenter", "com.realme.securitycenter.startupapp.StartupAppListActivity")
-                }
-                manufacturer.contains("samsung") -> {
-                    intent.action = "android.settings.APPLICATION_DETAILS_SETTINGS"
-                    intent.data = ("package:" + reactContext.packageName).toUri()
-                }
-                else -> {
-                    // fallback to app details settings
-                    intent.action = android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS
-                    intent.data = ("package:" + reactContext.packageName).toUri()
-                }
-            }
-
-            intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
-            reactContext.startActivity(intent)
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-    }
-
 
     @ReactMethod
     fun startMonitoring() {

@@ -1,4 +1,4 @@
-package com.wevois.paymentapp;
+package com.wevois.paymentapp
 
 import com.facebook.react.ReactPackage
 import com.facebook.react.bridge.NativeModule
