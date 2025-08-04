@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.os.Build
+import android.util.Log
 import androidx.core.content.ContextCompat
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
@@ -33,8 +34,10 @@ class TraversalReceiverModule(private val reactContext: ReactApplicationContext)
 
                 "travel_history" -> {
                     val data = intent.getStringExtra("travel_history") ?: return
+                    Log.d("LocationUpdate","travel_history: $data")
                     sendEvent("onTraversalUpdate", data)
                 }
+
 
                 else -> return
             }

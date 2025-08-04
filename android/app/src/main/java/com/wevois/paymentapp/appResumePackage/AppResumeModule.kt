@@ -20,12 +20,12 @@ class AppResumeModule(private val reactContext: ReactApplicationContext) :
 
     override fun initialize() {
         super.initialize()
-        Log.d("AppResumeModule", "initialize called")
+
         registerLifecycle()
     }
 
     fun initLifecycleTracking() {
-        Log.d("AppResumeModule", "initialize called")
+
         registerLifecycle()
     }
 
@@ -34,27 +34,27 @@ class AppResumeModule(private val reactContext: ReactApplicationContext) :
     }
 
     private fun registerLifecycle() {
-        Log.d("AppResumeModule", "Lifecycle Started")
+
         if (lifecycleCallbacks != null) {
-            Log.d("AppResumeModule", "Lifecycle already registered")
+
             return
         }
 
         val app = reactContext.applicationContext as? Application
         if (app == null) {
-            Log.e("AppResumeModule", "Application context is null")
+
             return
         }
 
         lifecycleCallbacks = object : Application.ActivityLifecycleCallbacks {
             override fun onActivityResumed(activity: Activity) {
-                Log.d("AppResumeModule", "onActivityResumed")
+
                 setAppIsBackground(false)
                 sendDialogStatusToReactNative(false)
             }
 
             override fun onActivityPaused(activity: Activity) {
-                Log.d("AppResumeModule", "onActivityPaused")
+
                 setAppIsBackground(true)
                 sendDialogStatusToReactNative(true)
             }
@@ -67,14 +67,12 @@ class AppResumeModule(private val reactContext: ReactApplicationContext) :
         }
 
         app.registerActivityLifecycleCallbacks(lifecycleCallbacks!!)
-        Log.d("AppResumeModule", "Lifecycle registered")
     }
 
     private fun unregisterLifecycle() {
         val app = reactContext.applicationContext as? Application
         if (app != null && lifecycleCallbacks != null) {
             app.unregisterActivityLifecycleCallbacks(lifecycleCallbacks!!)
-            Log.d("AppResumeModule", "Lifecycle unregistered")
         }
         lifecycleCallbacks = null
     }
@@ -85,7 +83,7 @@ class AppResumeModule(private val reactContext: ReactApplicationContext) :
             putBoolean("isAppInBackground", isAppBackground)
             apply()
         }
-        Log.d("AppResumeModule", "isAppInBackground set to $isAppBackground")
+
     }
 
     private fun sendDialogStatusToReactNative(isVisible: Boolean) {
@@ -93,7 +91,7 @@ class AppResumeModule(private val reactContext: ReactApplicationContext) :
             putBoolean("dialog", isVisible)
         }
 
-        Log.d("AppResumeModule", "Sending event to JS: onSystemDialogStatus = $isVisible")
+
 
         reactContext
             .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)

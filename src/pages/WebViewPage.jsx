@@ -84,10 +84,12 @@ const WebViewPage = () => {
       'onTraversalUpdate',
       history => {
         const data = JSON.parse(history);
+        console.log("history",data);
         action.handleTravelHistory('history', data, webViewRef);
 
       }
     );
+   
 
     return () => {
       travelSub?.remove();
@@ -161,6 +163,7 @@ const WebViewPage = () => {
   const startConnectivityListener = () => {
     ConnectivityModule.startMonitoring();
     AppResumeModule?.initLifecycleTracking?.();
+    // ConnectivityModule.openAutoStartSettings()
   };
   const stopConnectivityListener = () => {
     ConnectivityModule.stopMonitoring();

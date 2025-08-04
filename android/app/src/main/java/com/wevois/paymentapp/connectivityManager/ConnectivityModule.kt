@@ -12,13 +12,13 @@ import android.net.NetworkRequest
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
-import android.util.Log
 import androidx.core.content.ContextCompat
 import androidx.core.location.LocationManagerCompat
 import com.facebook.react.bridge.*
 import com.facebook.react.modules.core.DeviceEventManagerModule
 import java.util.Calendar
 import android.provider.Settings
+import androidx.core.net.toUri
 
 class ConnectivityModule(private val reactContext: ReactApplicationContext) :
     ReactContextBaseJavaModule(reactContext) {
@@ -120,7 +120,7 @@ class ConnectivityModule(private val reactContext: ReactApplicationContext) :
 
     private fun sendOnlyNetworkStatus() {
         val isMobile = isInternetAvailable(reactContext)
-        Log.d("ConnectivityModule", "Network status: isMobile=$isMobile")
+
 
         val mobileMap = Arguments.createMap().apply {
             putBoolean("isMobileDataOn", isMobile)
@@ -137,7 +137,7 @@ class ConnectivityModule(private val reactContext: ReactApplicationContext) :
 
     private fun sendOnlyLocationStatus() {
         val isLocation = isDeviceLocationHighAccuracy(reactContext)
-        Log.d("ConnectivityModule", "Location status: isLocation=$isLocation")
+
 
         val locationMap = Arguments.createMap().apply {
             putBoolean("isLocationOn", isLocation)
@@ -180,11 +180,47 @@ class ConnectivityModule(private val reactContext: ReactApplicationContext) :
         }
     }
 
+    @ReactMethod
+    fun openAutoStartSettings() {
+        try {
+            val intent = Intent()
+            val manufacturer = Build.MANUFACTURER.lowercase()
+
+            when {
+                manufacturer.contains("xiaomi") -> {
+                    intent.setClassName("com.miui.securitycenter", "com.miui.permcenter.autostart.AutoStartManagementActivity")
+                }
+                manufacturer.contains("oppo") -> {
+                    intent.setClassName("com.coloros.safecenter", "com.coloros.safecenter.startupapp.StartupAppListActivity")
+                }
+                manufacturer.contains("vivo") -> {
+                    intent.setClassName("com.vivo.permissionmanager", "com.vivo.permissionmanager.activity.BgStartUpManagerActivity")
+                }
+                manufacturer.contains("realme") -> {
+                    intent.setClassName("com.realme.securitycenter", "com.realme.securitycenter.startupapp.StartupAppListActivity")
+                }
+                manufacturer.contains("samsung") -> {
+                    intent.action = "android.settings.APPLICATION_DETAILS_SETTINGS"
+                    intent.data = ("package:" + reactContext.packageName).toUri()
+                }
+                else -> {
+                    // fallback to app details settings
+                    intent.action = android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS
+                    intent.data = ("package:" + reactContext.packageName).toUri()
+                }
+            }
+
+            intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            reactContext.startActivity(intent)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
 
 
     @ReactMethod
     fun startMonitoring() {
-        Log.d("Connection Listener", "Started")
+
         register()
         sendInitialStatusToJS() // <-- Send immediately on JS call too
         startTimeChecker()
@@ -228,7 +264,7 @@ class ConnectivityModule(private val reactContext: ReactApplicationContext) :
     }
     @ReactMethod
     fun stopMonitoring() {
-        Log.d("Connection Listener", "Ended")
+
         unregister()
     }
 }

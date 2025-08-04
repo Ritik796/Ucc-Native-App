@@ -1,13 +1,11 @@
 package com.wevois.paymentapp
 
-
 import android.annotation.SuppressLint
 import android.app.*
 import android.content.Context
 import android.content.Intent
 import android.hardware.*
-import android.location.Location
-
+import android.location.*
 import android.os.*
 import android.util.Log
 import androidx.core.app.NotificationCompat
@@ -15,20 +13,17 @@ import androidx.core.content.edit
 import com.facebook.react.HeadlessJsTaskService
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.jstasks.HeadlessJsTaskConfig
-import com.google.android.gms.location.*
-import com.google.android.gms.location.LocationRequest
 import org.json.JSONArray
 import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.math.*
 
-
+@Suppress("DEPRECATION")
 class MyTaskService : HeadlessJsTaskService() {
 
-    private lateinit var fusedClient: FusedLocationProviderClient
-
-    private lateinit var locationCallback: LocationCallback
+    private lateinit var locationManager: LocationManager
+    private lateinit var locationListener: LocationListener
 
     private lateinit var sensorManager: SensorManager
     private var motionSensorListener: SensorEventListener? = null
@@ -51,12 +46,13 @@ class MyTaskService : HeadlessJsTaskService() {
     private var isDeviceMoving = false
     private var lastAcceleration = FloatArray(3)
     private val accelerationThreshold = 0.5f
-    private val backgroundTravelHistoryList = mutableListOf<JSONObject>()
+
+
 
     override fun onCreate() {
         super.onCreate()
         startForegroundServiceWithNotification()
-        fusedClient = LocationServices.getFusedLocationProviderClient(this)
+        locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
         sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
         setupMotionSensor()
     }
@@ -68,58 +64,33 @@ class MyTaskService : HeadlessJsTaskService() {
         reqLocSendInterval = intent?.getStringExtra("LOCATION_SEND_INTERVAL") ?: "1"
         acquireWakeLock()
         setServiceRunning(true)
-        startFusedLocationTracking()
+        startLocationManagerUpdates()
         return START_STICKY
     }
 
-    @SuppressLint("InvalidWakeLockTag")
-    private fun acquireWakeLock() {
-        if (wakeLock == null || !wakeLock!!.isHeld) {
-            val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
-            wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "LocationTrackingWakeLock")
-            wakeLock?.acquire(10 * 60 * 1000L)
-            Log.d("WakeLock", "Wake lock acquired")
-        }
-    }
-
-    private fun renewWakeLockIfNeeded() {
-        if (wakeLock?.isHeld == true) {
-            wakeLock?.release()
-        }
-        acquireWakeLock()
-    }
-
-    private fun releaseWakeLock() {
-        wakeLock?.let {
-            if (it.isHeld) it.release()
-            Log.d("WakeLock", "Wake lock released")
-        }
-        wakeLock = null
-    }
-
-    @SuppressLint("MissingPermission")
-    private fun startFusedLocationTracking() {
+    @SuppressLint("MissingPermission", "InvalidWakeLockTag")
+    private fun startLocationManagerUpdates() {
         val intervalMillis = reqLocInterval.toLongOrNull() ?: 3000L
         val distanceMeters = reqLocDistance.toFloatOrNull() ?: 1f
 
-        val locationRequest = LocationRequest.Builder(
-            Priority.PRIORITY_HIGH_ACCURACY,  // priority
-            intervalMillis                    // interval in milliseconds
-        ).apply {
-            setMinUpdateIntervalMillis(intervalMillis / 2)    // fastest interval
-            setMinUpdateDistanceMeters(distanceMeters)        // minimum distance change
-        }.build()
-
-
-        locationCallback = object : LocationCallback() {
-            override fun onLocationResult(result: LocationResult) {
-                for (location in result.locations) {
-                    handleLocationUpdate(location)
-                }
+        locationListener = object : LocationListener {
+            override fun onLocationChanged(location: Location) {
+                handleLocationUpdate(location)
             }
+
+            @Deprecated("Deprecated in Java")
+            override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
+            override fun onProviderEnabled(provider: String) {}
+            override fun onProviderDisabled(provider: String) {}
         }
 
-        fusedClient.requestLocationUpdates(locationRequest, locationCallback, Looper.getMainLooper())
+        locationManager.requestLocationUpdates(
+            LocationManager.GPS_PROVIDER,
+            intervalMillis,
+            distanceMeters,
+            locationListener,
+            Looper.getMainLooper()
+        )
 
         saveRunnable = object : Runnable {
             override fun run() {
@@ -141,9 +112,10 @@ class MyTaskService : HeadlessJsTaskService() {
         val lat = location.latitude
         val lng = location.longitude
         val acc = location.accuracy
-        Log.d("LocationUpdate", "Lat: $lat, Lng: $lng, Accuracy: $acc")
+        Log.d("LocationUpdate","$lat,$lng  , $acc")
         val requiredLocationAccuracy: Float = reqLocAccuracy.toFloatOrNull() ?: 15f
-        if(acc > requiredLocationAccuracy) return
+        if (acc > requiredLocationAccuracy) return
+
         if (previousLat == null || previousLng == null) {
             previousLat = lat
             previousLng = lng
@@ -157,7 +129,6 @@ class MyTaskService : HeadlessJsTaskService() {
         val lngDiff = abs(previousLng!! - lng)
 
         if (!isDeviceMoving && latDiff < 0.00005 && lngDiff < 0.00005) {
-            Log.d("LocationUpdate", "Ignored minor GPS jitter.")
             return
         }
 
@@ -183,33 +154,100 @@ class MyTaskService : HeadlessJsTaskService() {
             putExtra("longitude", lng)
         }
         sendBroadcast(intent)
-        Log.d("LocationUpdate", "Broadcast sent: ($lat, $lng)")
+
     }
 
-    private fun saveDataToDatabase(history: String) {
+
+
+    fun saveDataToDatabase(history: String) {
         val currentTime = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
+
         val jsonObj = JSONObject().apply {
             put("time", currentTime)
             put("history", history)
         }
 
         if (isAppInBackground(applicationContext)) {
-            backgroundTravelHistoryList.add(jsonObj)
-            Log.d("LocationUpdate", "App in background. Stored: $jsonObj")
+            Log.d("LocationUpdate", "App is in background. Adding to background history.")
+            TravelHistoryManager.addToBackgroundHistory(jsonObj)
         } else {
-            if (backgroundTravelHistoryList.isNotEmpty()) {
-                val jsonArray = JSONArray()
-                backgroundTravelHistoryList.forEach { jsonArray.put(it) }
-                jsonObj.put("back_history", jsonArray)
-                backgroundTravelHistoryList.clear()
+            val backArray = TravelHistoryManager.getBackgroundHistoryArrayAndClear()
+            if (backArray != null) {
+                Log.d("TravelLog", "App in foreground. Sending history with background history (type = both)")
+                TravelHistoryManager.isSavingWithBoth = true
+                jsonObj.put("back_history", backArray)
+                jsonObj.put("type", "both")
+            } else {
+                Log.d("LocationUpdate", "App in foreground. Sending single history (type = history)")
+                jsonObj.put("type", "history")
             }
+
             val intent = Intent("travel_history").apply {
                 putExtra("travel_history", jsonObj.toString())
             }
             sendBroadcast(intent)
-            Log.d("LocationUpdate", "Broadcast travel_history: $jsonObj")
+
+            TravelHistoryManager.isSavingWithBoth = false
         }
     }
+
+
+    object TravelHistoryManager {
+        private val backgroundTravelHistoryList = mutableListOf<JSONObject>()
+        var isSavingWithBoth: Boolean = false
+
+        fun addToBackgroundHistory(json: JSONObject) {
+            Log.d("LocationUpdate", "Added to backgroundTravelHistoryList: $json")
+            backgroundTravelHistoryList.add(json)
+        }
+
+        fun getBackgroundHistoryArrayAndClear(): JSONArray? {
+            return if (backgroundTravelHistoryList.isNotEmpty()) {
+                val array = JSONArray().apply {
+                    backgroundTravelHistoryList.forEach { put(it) }
+                }
+                Log.d("LocationUpdate", "Returning and clearing backgroundTravelHistoryList. Count = ${backgroundTravelHistoryList.size}")
+                backgroundTravelHistoryList.clear()
+                array
+            } else {
+                Log.d("LocationUpdate", "No background history to attach.")
+                null
+            }
+        }
+
+        fun flushBackgroundHistoryIfNeeded(context: Context) {
+            Log.d("LocationUpdate", "flushBackgroundHistoryIfNeeded() skipped: isSavingWithBoth = $isSavingWithBoth")
+            if (isSavingWithBoth) {
+                Log.d("LocationUpdate", "flushBackgroundHistoryIfNeeded() skipped: isSavingWithBoth = true")
+                return
+            }
+
+            if (backgroundTravelHistoryList.isNotEmpty()) {
+                val array = JSONArray().apply {
+                    backgroundTravelHistoryList.forEach { put(it) }
+                }
+
+                val jsonObject = JSONObject().apply {
+                    put("back_history", array)
+                    put("type", "back_history")
+                }
+
+                val intent = Intent("travel_history").apply {
+                    putExtra("travel_history", jsonObject.toString())
+                }
+
+                context.sendBroadcast(intent)
+
+                Log.d("LocationUpdate", "Flushed background history. Count = ${array.length()}")
+                backgroundTravelHistoryList.clear()
+            } else {
+                Log.d("LocationUpdate", "No background history to flush.")
+            }
+        }
+    }
+
+
+
 
     private fun getDelayToNextMinute(): Long {
         val now = Calendar.getInstance()
@@ -257,8 +295,15 @@ class MyTaskService : HeadlessJsTaskService() {
 
             override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
         }
-        sensorManager.registerListener(motionSensorListener, accelerometer, SensorManager.SENSOR_DELAY_NORMAL)
+
+        // Use SENSOR_DELAY_UI or SENSOR_DELAY_NORMAL only if needed
+        sensorManager.registerListener(
+            motionSensorListener,
+            accelerometer,
+            SensorManager.SENSOR_DELAY_UI // ~60ms delay, lighter than SENSOR_DELAY_NORMAL
+        )
     }
+
 
     @SuppressLint("NewApi")
     private fun startForegroundServiceWithNotification() {
@@ -279,12 +324,34 @@ class MyTaskService : HeadlessJsTaskService() {
         startForeground(1, notification)
     }
 
+    private fun acquireWakeLock() {
+        if (wakeLock == null || !wakeLock!!.isHeld) {
+            val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+            wakeLock = powerManager.newWakeLock(
+                PowerManager.PARTIAL_WAKE_LOCK,
+                "wevois:location_tracking_wakelock"
+            )
+            wakeLock?.acquire(10 * 60 * 1000L)
+        }
+    }
+
+    private fun renewWakeLockIfNeeded() {
+        if (wakeLock?.isHeld == true) wakeLock?.release()
+        acquireWakeLock()
+    }
+
+    private fun releaseWakeLock() {
+        wakeLock?.let {
+            if (it.isHeld) it.release()
+        }
+        wakeLock = null
+    }
+
     override fun onDestroy() {
         handler.removeCallbacks(saveRunnable)
-        fusedClient.removeLocationUpdates(locationCallback)
+        locationManager.removeUpdates(locationListener)
         motionSensorListener?.let { sensorManager.unregisterListener(it) }
         releaseWakeLock()
-        @Suppress("DEPRECATION")
         stopForeground(true)
         setServiceRunning(false)
         super.onDestroy()

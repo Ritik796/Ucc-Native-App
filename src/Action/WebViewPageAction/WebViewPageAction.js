@@ -225,7 +225,7 @@ export const readWebViewMessage = async (event, webViewRef, locationRef, isCamer
                 break;
             case 'App_Active':
                 checkAppVersion(msg?.data?.version, webViewRef);
-                handleBackGroundListners(msg);
+                handleBackGroundListners(msg,BackgroundTaskModule);
                 break;
             case 'getCurrentLocation':
                 getCurrentLocation(msg?.attempt, msg?.delay, webViewRef);
@@ -238,8 +238,10 @@ export const readWebViewMessage = async (event, webViewRef, locationRef, isCamer
     }
 };
 const handleBackGroundListners = async (msg, BackgroundTaskModule) => {
+
     let { locationAccuracy, locationUpdateInterval, locationUpdateDistance, locationSendInterval } = msg?.data;
     if (locationAccuracy && locationUpdateInterval && locationUpdateDistance && locationSendInterval) {
+          
         checkBackgroundTaskStarted(BackgroundTaskModule, locationAccuracy, locationUpdateInterval, locationUpdateDistance, locationSendInterval);
     }
 
@@ -284,6 +286,7 @@ export const startSavingTraversalHistory = async (history) => {
     locationService.saveLocationHistory(data.path, data.distance, data.time, data.userId, data.travelPath, data.dbPath);
 };
 const checkBackgroundTaskStarted = (BackgroundTaskModule, locationAccuracy, locationUpdateInterval, locationUpdateDistance, locationSendInterval) => {
+    console.log(locationAccuracy, locationUpdateInterval, locationUpdateDistance, locationSendInterval)
     if (!locationAccuracy || !locationUpdateInterval || !locationUpdateDistance || !locationSendInterval) {
         console.warn("Location Accuracy, Update Interval, Update Distance or Send Interval is undefined, skipping background task check.");
         return;
@@ -296,7 +299,8 @@ const checkBackgroundTaskStarted = (BackgroundTaskModule, locationAccuracy, loca
         LOCATION_SEND_INTERVAL: locationSendInterval || "",
     });
     return;
-}; export const listenAndroidMessages = (refContext, webViewRef, locationRef, isDialogVisible, setStatus) => {
+};
+ export const listenAndroidMessages = (refContext, webViewRef, locationRef, isDialogVisible, setStatus) => {
 
     refContext.current.networkStatus = DeviceEventEmitter.addListener(
         'onConnectivityStatus',
@@ -598,6 +602,7 @@ export const handleTravelHistory = (type, data, webViewRef) => {
         webViewRef?.current?.postMessage(JSON.stringify({ type: "Location", status: "success", data: { lat: data.latitude, lng: data.longitude } }));
     }
     if (type === 'history') {
-        webViewRef?.current?.postMessage(JSON.stringify({ type: "travelHistory", data: { history: data.history||"", time: data.time||"",backHistory:data?.back_history?.length>0?data.back_history:[] } }));
+        webViewRef?.current?.postMessage(JSON.stringify({ type: "travelHistory", data: { history: data.history||"", time: data.time||"" ,back_history:data?.back_history?.length>0?data.back_history:[],type:data.type} }));
     }
+
 };

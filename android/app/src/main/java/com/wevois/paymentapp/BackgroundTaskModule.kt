@@ -12,12 +12,8 @@ import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.ReactMethod
 import com.facebook.react.bridge.ReadableMap
 import java.util.Calendar
-import androidx.work.PeriodicWorkRequestBuilder
-import androidx.work.WorkManager
-import androidx.work.Data
-import androidx.work.ExistingWorkPolicy
-import androidx.work.OneTimeWorkRequestBuilder
-import java.util.concurrent.TimeUnit
+import com.wevois.paymentapp.MyTaskService.TravelHistoryManager.flushBackgroundHistoryIfNeeded
+
 
 class BackgroundTaskModule(reactContext: ReactApplicationContext) :
     ReactContextBaseJavaModule(reactContext) {
@@ -35,7 +31,7 @@ class BackgroundTaskModule(reactContext: ReactApplicationContext) :
     fun startBackgroundTask(options: ReadableMap) {
         val currentTime = System.currentTimeMillis()
         if (currentTime - lastStartTime < minStartInterval) {
-            Log.d("BackgroundTaskModule", "Start request ignored due to cooldown")
+
             return
         }
         lastStartTime = currentTime
@@ -47,7 +43,7 @@ class BackgroundTaskModule(reactContext: ReactApplicationContext) :
         val updateInterval = if (options.hasKey("LOCATION_UPDATE_INTERVAL")) options.getString("LOCATION_UPDATE_INTERVAL") else null
 
         if (accuracy.isNullOrEmpty() || updateDistance.isNullOrEmpty() || sendDelay.isNullOrEmpty() || updateInterval.isNullOrEmpty()) {
-            Log.e("BackgroundTaskModule", "Missing accuracy : $accuracy or updateDistance : $updateDistance or sendDelay : $sendDelay  updateInterval : $updateInterval in checkAndRestartBackgroundTask")
+
             return
         }
 
@@ -66,43 +62,45 @@ class BackgroundTaskModule(reactContext: ReactApplicationContext) :
             context.startService(serviceIntent)
         }
         startTimeChecker()
-        Log.d("BackgroundTaskModule", "startForegroundService or startService called")
     }
 
     @ReactMethod
     fun checkAndRestartBackgroundTask(options: ReadableMap) {
         val context = reactApplicationContext
-
+        flushBackgroundHistoryIfNeeded(context)
         val accuracy = if (options.hasKey("LOCATION_ACCURACY")) options.getString("LOCATION_ACCURACY") else null
         val updateDistance = if (options.hasKey("LOCATION_UPDATE_DISTANCE")) options.getString("LOCATION_UPDATE_DISTANCE") else null
         val sendDelay = if (options.hasKey("LOCATION_SEND_INTERVAL")) options.getString("LOCATION_SEND_INTERVAL") else null
         val updateInterval = if (options.hasKey("LOCATION_UPDATE_INTERVAL")) options.getString("LOCATION_UPDATE_INTERVAL") else null
 
-
-
         if (accuracy.isNullOrEmpty() || updateDistance.isNullOrEmpty() || sendDelay.isNullOrEmpty() || updateInterval.isNullOrEmpty()) {
-            Log.e("BackgroundTaskModule", "Missing accuracy : $accuracy or updateDistance : $updateDistance or sendDelay : $sendDelay  updateInterval : $updateInterval in checkAndRestartBackgroundTask")
             return
         }
 
         if (!isServiceRunning(MyTaskService::class.java)) {
-            Log.i("BackgroundTaskModule", "Service not running. Restarting MyTaskService.")
+
             val serviceIntent = Intent(context, MyTaskService::class.java).apply {
                 putExtra("LOCATION_ACCURACY", accuracy)
                 putExtra("LOCATION_UPDATE_DISTANCE", updateDistance)
-                putExtra("LOCATION_UPDATE_INTERVAL",updateInterval)
-                putExtra("LOCATION_SEND_INTERVAL",sendDelay)
+                putExtra("LOCATION_UPDATE_INTERVAL", updateInterval)
+                putExtra("LOCATION_SEND_INTERVAL", sendDelay)
             }
+
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 context.startForegroundService(serviceIntent)
             } else {
                 context.startService(serviceIntent)
             }
+
+
+
             startTimeChecker()
-        } else {
-            Log.i("BackgroundTaskModule", "Service already running. No action taken.")
         }
     }
+
+
+
+
 
     @SuppressLint("MissingPermission", "DeprecatedMethod")
     private fun isServiceRunning(serviceClass: Class<*>): Boolean {
@@ -119,7 +117,6 @@ class BackgroundTaskModule(reactContext: ReactApplicationContext) :
     @ReactMethod
     fun stopBackgroundTask() {
         val context = reactApplicationContext
-        Log.d("stopBackgroundTask", "App killed and run")
         val serviceIntent = Intent(context, MyTaskService::class.java)
         context.stopService(serviceIntent)
         stopTimeChecker()
