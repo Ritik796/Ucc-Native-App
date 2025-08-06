@@ -2,8 +2,10 @@ package com.wevois.paymentapp
 
 import android.annotation.SuppressLint
 import android.app.*
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.hardware.*
 import android.location.*
 import android.os.*
@@ -24,10 +26,8 @@ class MyTaskService : HeadlessJsTaskService() {
 
     private lateinit var locationManager: LocationManager
     private lateinit var locationListener: LocationListener
-
     private lateinit var sensorManager: SensorManager
     private var motionSensorListener: SensorEventListener? = null
-    private var wakeLock: PowerManager.WakeLock? = null
 
     private val handler = Handler(Looper.getMainLooper())
     private lateinit var saveRunnable: Runnable
@@ -46,14 +46,15 @@ class MyTaskService : HeadlessJsTaskService() {
     private var isDeviceMoving = false
     private var lastAcceleration = FloatArray(3)
     private val accelerationThreshold = 0.5f
-
-
+    private var isWaitingForUnlockLocation = false
+    private var isDeviceLocked = false
 
     override fun onCreate() {
         super.onCreate()
         startForegroundServiceWithNotification()
         locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
         sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
+        registerScreenLockReceiver()
         setupMotionSensor()
     }
 
@@ -62,7 +63,7 @@ class MyTaskService : HeadlessJsTaskService() {
         reqLocDistance = intent?.getStringExtra("LOCATION_UPDATE_DISTANCE") ?: "1"
         reqLocInterval = intent?.getStringExtra("LOCATION_UPDATE_INTERVAL") ?: "3000"
         reqLocSendInterval = intent?.getStringExtra("LOCATION_SEND_INTERVAL") ?: "1"
-        acquireWakeLock()
+
         setServiceRunning(true)
         startLocationManagerUpdates()
         return START_STICKY
@@ -70,6 +71,8 @@ class MyTaskService : HeadlessJsTaskService() {
 
     @SuppressLint("MissingPermission", "InvalidWakeLockTag")
     private fun startLocationManagerUpdates() {
+        Log.d("LocationService", "Starting location updates")
+
         val intervalMillis = reqLocInterval.toLongOrNull() ?: 3000L
         val distanceMeters = reqLocDistance.toFloatOrNull() ?: 1f
 
@@ -84,19 +87,25 @@ class MyTaskService : HeadlessJsTaskService() {
             override fun onProviderDisabled(provider: String) {}
         }
 
-        locationManager.requestLocationUpdates(
-            LocationManager.GPS_PROVIDER,
-            intervalMillis,
-            distanceMeters,
-            locationListener,
-            Looper.getMainLooper()
-        )
+        try {
+            locationManager.requestLocationUpdates(
+                LocationManager.GPS_PROVIDER,
+                intervalMillis,
+                distanceMeters,
+                locationListener,
+                Looper.getMainLooper()
+            )
+        } catch (e: SecurityException) {
+            Log.e("LocationService", "Permission denied for location updates", e)
+        }
 
+        // Setup periodic save
         saveRunnable = object : Runnable {
             override fun run() {
-                renewWakeLockIfNeeded()
                 if (traversalHistory.isNotEmpty()) {
-                    while (traversalHistory.endsWith("~")) traversalHistory.setLength(traversalHistory.length - 1)
+                    while (traversalHistory.endsWith("~")) {
+                        traversalHistory.setLength(traversalHistory.length - 1)
+                    }
                     saveDataToDatabase(traversalHistory.toString())
                     traversalHistory.clear()
                     minuteDistance = 0.0
@@ -112,19 +121,37 @@ class MyTaskService : HeadlessJsTaskService() {
         val lat = location.latitude
         val lng = location.longitude
         val acc = location.accuracy
-        Log.d("LocationUpdate","$lat,$lng  , $acc")
-        val requiredLocationAccuracy: Float = reqLocAccuracy.toFloatOrNull() ?: 15f
-        if (acc > requiredLocationAccuracy) return
 
+        Log.d("LocationUpdate", "Location: $lat,$lng, Accuracy: $acc")
+
+        if (lat.isNaN() || lng.isNaN()) {
+            Log.e("LocationUpdate", "Invalid coordinates received")
+            return
+        }
+
+        val requiredLocationAccuracy = reqLocAccuracy.toFloatOrNull() ?: 15f
+        if (acc > requiredLocationAccuracy) {
+            Log.d("LocationUpdate", "Accuracy too low: $acc > $requiredLocationAccuracy")
+            return
+        }
+
+        // Handle first location or unlock location
         if (previousLat == null || previousLng == null) {
-            previousLat = lat
-            previousLng = lng
+            updateLocation(lat, lng)
             traversalHistory.append("($lat,$lng)")
             sendAvatarLocationToWebView(lat, lng)
             saveDataToDatabase(traversalHistory.toString())
             return
         }
 
+        // Handle unlock location update
+        if (isWaitingForUnlockLocation) {
+            updateLocation(lat, lng)
+            TravelHistoryManager.updateLastUnlockWithLatLng(lat, lng, this)
+            isWaitingForUnlockLocation = false
+        }
+
+        // Check for significant movement
         val latDiff = abs(previousLat!! - lat)
         val lngDiff = abs(previousLng!! - lng)
 
@@ -133,17 +160,22 @@ class MyTaskService : HeadlessJsTaskService() {
         }
 
         val distance = getDistance(previousLat!!, previousLng!!, lat, lng)
+
         if (distance in 0.1..maxDistanceCanCover.toDouble()) {
             if (traversalHistory.isNotEmpty() && traversalHistory.last() != '~') {
                 traversalHistory.append("~")
             }
             traversalHistory.append("($lat,$lng)")
             minuteDistance += distance
+            updateLocation(lat, lng)
             sendAvatarLocationToWebView(lat, lng)
-        } else if (distance != 0.0) {
+        } else if (distance > maxDistanceCanCover) {
             maxDistanceCanCover += maxDistance
+            Log.d("LocationUpdate", "Distance too large: $distance, increasing max to $maxDistanceCanCover")
         }
+    }
 
+    private fun updateLocation(lat: Double, lng: Double) {
         previousLat = lat
         previousLng = lng
     }
@@ -154,12 +186,9 @@ class MyTaskService : HeadlessJsTaskService() {
             putExtra("longitude", lng)
         }
         sendBroadcast(intent)
-
     }
 
-
-
-    fun saveDataToDatabase(history: String) {
+    private fun saveDataToDatabase(history: String) {
         val currentTime = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
 
         val jsonObj = JSONObject().apply {
@@ -168,17 +197,16 @@ class MyTaskService : HeadlessJsTaskService() {
         }
 
         if (isAppInBackground(applicationContext)) {
-            Log.d("LocationUpdate", "App is in background. Adding to background history.")
+            Log.d("LocationService", "App in background, adding to background history")
             TravelHistoryManager.addToBackgroundHistory(jsonObj)
         } else {
             val backArray = TravelHistoryManager.getBackgroundHistoryArrayAndClear()
             if (backArray != null) {
-                Log.d("TravelLog", "App in foreground. Sending history with background history (type = both)")
+                Log.d("LocationService", "Sending history with background data")
                 TravelHistoryManager.isSavingWithBoth = true
                 jsonObj.put("back_history", backArray)
                 jsonObj.put("type", "both")
             } else {
-                Log.d("LocationUpdate", "App in foreground. Sending single history (type = history)")
                 jsonObj.put("type", "history")
             }
 
@@ -191,14 +219,43 @@ class MyTaskService : HeadlessJsTaskService() {
         }
     }
 
-
+    // ====== LOCK/UNLOCK HISTORY MANAGEMENT ======
     object TravelHistoryManager {
         private val backgroundTravelHistoryList = mutableListOf<JSONObject>()
+        private val lockHistoryList = mutableListOf<JSONObject>()
         var isSavingWithBoth: Boolean = false
+        private var lastUnlockUpdatedIndex: Int = -1
 
         fun addToBackgroundHistory(json: JSONObject) {
-            Log.d("LocationUpdate", "Added to backgroundTravelHistoryList: $json")
+            Log.d("TravelHistory", "Added to background history: $json")
             backgroundTravelHistoryList.add(json)
+        }
+
+        fun addLockHistory(json: JSONObject) {
+            Log.d("LockHistory", "Added lock/unlock event: $json")
+            lockHistoryList.add(json)
+        }
+
+        fun updateLastUnlockWithLatLng(lat: Double, lng: Double, context: Context) {
+            Log.d("LockHistory", "Updating unlock location: $lat, $lng")
+
+            for (i in lockHistoryList.size - 1 downTo 0) {
+                val item = lockHistoryList[i]
+                val status = item.optString("status")
+                val latLng = item.optString("lat_lng")
+
+                if (status == "Unlock" && latLng.isEmpty() && i != lastUnlockUpdatedIndex) {
+                    item.put("lat_lng", "$lat,$lng")
+                    lastUnlockUpdatedIndex = i
+                    Log.d("LockHistory", "Updated unlock at index $i with coordinates")
+
+                    // Send to WebView if app is in foreground
+                    if (!isAppInBackground(context)) {
+                        flushLockHistory(context)
+                    }
+                    break
+                }
+            }
         }
 
         fun getBackgroundHistoryArrayAndClear(): JSONArray? {
@@ -206,19 +263,44 @@ class MyTaskService : HeadlessJsTaskService() {
                 val array = JSONArray().apply {
                     backgroundTravelHistoryList.forEach { put(it) }
                 }
-                Log.d("LocationUpdate", "Returning and clearing backgroundTravelHistoryList. Count = ${backgroundTravelHistoryList.size}")
+                Log.d("TravelHistory", "Returning background history, count: ${backgroundTravelHistoryList.size}")
                 backgroundTravelHistoryList.clear()
                 array
             } else {
-                Log.d("LocationUpdate", "No background history to attach.")
                 null
             }
         }
 
+        fun flushLockHistory(context: Context) {
+            Log.d("LockHistory", "Flushing lock history, size: ${lockHistoryList.size}")
+
+            if (lockHistoryList.isEmpty()) {
+                Log.d("LockHistory", "No lock history to flush")
+                return
+            }
+
+            // Check if any entry has empty lat_lng
+            val hasEmptyLocation = lockHistoryList.any { item ->
+                val latLng = item.optString("lat_lng", "")
+                val isEmpty = latLng.isEmpty() || latLng.isBlank()
+                if (isEmpty) {
+                    Log.d("LockHistory", "Found entry with empty location: ${item.optString("status")} at ${item.optString("time")}")
+                }
+                isEmpty
+            }
+
+            if (hasEmptyLocation) {
+                Log.d("LockHistory", "Skipping flush - some entries have empty lat_lng, waiting for location updates")
+                return
+            }
+
+            Log.d("LockHistory", "All entries have valid locations, proceeding with flush")
+            sendLockHistoryToWebView(context)
+        }
+
         fun flushBackgroundHistoryIfNeeded(context: Context) {
-            Log.d("LocationUpdate", "flushBackgroundHistoryIfNeeded() skipped: isSavingWithBoth = $isSavingWithBoth")
             if (isSavingWithBoth) {
-                Log.d("LocationUpdate", "flushBackgroundHistoryIfNeeded() skipped: isSavingWithBoth = true")
+                Log.d("TravelHistory", "Skipping background flush - saving with both")
                 return
             }
 
@@ -237,27 +319,158 @@ class MyTaskService : HeadlessJsTaskService() {
                 }
 
                 context.sendBroadcast(intent)
-
-                Log.d("LocationUpdate", "Flushed background history. Count = ${array.length()}")
+                Log.d("TravelHistory", "Flushed background history, count: ${array.length()}")
                 backgroundTravelHistoryList.clear()
-            } else {
-                Log.d("LocationUpdate", "No background history to flush.")
+            }
+        }
+
+        private fun sendLockHistoryToWebView(context: Context) {
+            val array = JSONArray().apply {
+                lockHistoryList.forEach { put(it) }
+            }
+
+            val jsonObject = JSONObject().apply {
+                put("lock_history", array)
+                put("type", "lock_history")
+            }
+
+            val intent = Intent("lock_history").apply {
+                putExtra("lock_history", jsonObject.toString())
+            }
+
+            Log.d("LockHistory", "Sending lock history to WebView: $array")
+            context.sendBroadcast(intent)
+            lockHistoryList.clear()
+        }
+
+        private fun isAppInBackground(context: Context): Boolean {
+            val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+            val appProcesses = activityManager.runningAppProcesses ?: return true
+            val packageName = context.packageName
+
+            for (appProcess in appProcesses) {
+                if (appProcess.importance == ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND &&
+                    appProcess.processName == packageName) {
+                    return false
+                }
+            }
+            return true
+        }
+    }
+
+    // ====== SCREEN LOCK/UNLOCK RECEIVER ======
+    private var screenLockReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            when (intent?.action) {
+                Intent.ACTION_SCREEN_OFF -> {
+                    Log.d("ScreenLockReceiver", "📱 Screen turned OFF (device locked)")
+                    onDeviceLocked()
+                }
+                Intent.ACTION_USER_PRESENT -> {
+                    Log.d("ScreenLockReceiver", "🔓 Device unlocked")
+                    onDeviceUnlocked()
+                }
+                Intent.ACTION_SCREEN_ON -> {
+                    // Optional: handle screen on (but not unlocked)
+                    Log.d("ScreenLockReceiver", "💡 Screen turned ON")
+                }
             }
         }
     }
 
+    private fun registerScreenLockReceiver() {
+        val filter = IntentFilter().apply {
+            addAction(Intent.ACTION_SCREEN_OFF)
+            addAction(Intent.ACTION_USER_PRESENT)
+            addAction(Intent.ACTION_SCREEN_ON) // Optional
+        }
+        registerReceiver(screenLockReceiver, filter)
+        Log.d("ScreenLockReceiver", "Screen lock receiver registered")
+    }
 
+    private fun onDeviceLocked() {
+        isDeviceLocked = true
+        val currentTime = getCurrentTime()
 
+        // Use current location or last known location
+        val lat = previousLat ?: 0.0
+        val lng = previousLng ?: 0.0
+
+        Log.d("LockHistory", "Device locked at $currentTime, location: $lat, $lng")
+
+        val lockObj = JSONObject().apply {
+            put("time", currentTime)
+            put("status", "Lock")
+            put("lat_lng", if (previousLat != null && previousLng != null) "$lat,$lng" else "")
+        }
+
+        TravelHistoryManager.addLockHistory(lockObj)
+
+        // Send immediately if app is in foreground
+        if (!isAppInBackground(this)) {
+            TravelHistoryManager.flushLockHistory(this)
+        }
+
+        // Stop location updates to save battery when locked
+        stopLocationUpdatesTemporarily()
+    }
+
+    private fun onDeviceUnlocked() {
+        isDeviceLocked = false
+        val currentTime = getCurrentTime()
+
+        Log.d("LockHistory", "Device unlocked at $currentTime")
+
+        // Create unlock entry with empty coordinates (will be updated when location is received)
+        val unlockObj = JSONObject().apply {
+            put("time", currentTime)
+            put("status", "Unlock")
+            put("lat_lng", "") // Will be updated in updateLastUnlockWithLatLng
+        }
+
+        TravelHistoryManager.addLockHistory(unlockObj)
+
+        // Flag to update unlock location when next GPS fix is received
+        isWaitingForUnlockLocation = true
+
+        // Resume location updates
+        startLocationManagerUpdates()
+    }
+
+    private fun stopLocationUpdatesTemporarily() {
+        try {
+            if (::saveRunnable.isInitialized) {
+                handler.removeCallbacks(saveRunnable)
+            }
+            locationManager.removeUpdates(locationListener)
+            Log.d("LocationService", "Location updates stopped (device locked)")
+        } catch (e: Exception) {
+            Log.e("LocationService", "Error stopping location updates", e)
+        }
+    }
+
+    // ====== UTILITY METHODS ======
+    private fun getCurrentTime(): String {
+        return SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
+    }
 
     private fun getDelayToNextMinute(): Long {
         val now = Calendar.getInstance()
-        val nextMin = reqLocSendInterval.toIntOrNull() ?: 1
-        val nextMinute = (now.clone() as Calendar).apply {
-            add(Calendar.MINUTE, nextMin)
-            set(Calendar.SECOND, 0)
-            set(Calendar.MILLISECOND, 0)
+        val intervalMillis = reqLocSendInterval.toLongOrNull() ?: 60000L
+
+        Log.d("LocationService", "Interval set to: ${intervalMillis}ms (${intervalMillis / 1000} seconds)")
+
+        // Simply add the interval to current time
+        val nextUpdateTime = now.timeInMillis + intervalMillis
+
+        val nextTime = Calendar.getInstance().apply {
+            timeInMillis = nextUpdateTime
         }
-        return nextMinute.timeInMillis - now.timeInMillis
+
+        Log.d("LocationService", "Next update scheduled in: ${intervalMillis}ms")
+        Log.d("LocationService", "Next update time: ${SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(nextTime.time)}")
+
+        return intervalMillis
     }
 
     private fun getDistance(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
@@ -296,70 +509,73 @@ class MyTaskService : HeadlessJsTaskService() {
             override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
         }
 
-        // Use SENSOR_DELAY_UI or SENSOR_DELAY_NORMAL only if needed
         sensorManager.registerListener(
             motionSensorListener,
             accelerometer,
-            SensorManager.SENSOR_DELAY_UI // ~60ms delay, lighter than SENSOR_DELAY_NORMAL
+            SensorManager.SENSOR_DELAY_UI
         )
     }
-
 
     @SuppressLint("NewApi")
     private fun startForegroundServiceWithNotification() {
         val channelId = "MyTaskServiceChannel"
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(channelId, "Background Service", NotificationManager.IMPORTANCE_LOW)
+            val channel = NotificationChannel(
+                channelId,
+                "Background Service",
+                NotificationManager.IMPORTANCE_LOW
+            ).apply {
+                setShowBadge(false)
+                enableLights(false)
+                enableVibration(false)
+                description = "Location tracking service"
+            }
+
             val manager = getSystemService(NotificationManager::class.java)
             manager?.createNotificationChannel(channel)
         }
 
         val notification = NotificationCompat.Builder(this, channelId)
             .setContentTitle("WeVOIS Payment App")
-            .setContentText("Background service is running")
+            .setContentText("Location tracking active")
             .setOngoing(true)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .build()
 
         startForeground(1, notification)
     }
 
-    private fun acquireWakeLock() {
-        if (wakeLock == null || !wakeLock!!.isHeld) {
-            val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
-            wakeLock = powerManager.newWakeLock(
-                PowerManager.PARTIAL_WAKE_LOCK,
-                "wevois:location_tracking_wakelock"
-            )
-            wakeLock?.acquire(10 * 60 * 1000L)
-        }
-    }
-
-    private fun renewWakeLockIfNeeded() {
-        if (wakeLock?.isHeld == true) wakeLock?.release()
-        acquireWakeLock()
-    }
-
-    private fun releaseWakeLock() {
-        wakeLock?.let {
-            if (it.isHeld) it.release()
-        }
-        wakeLock = null
-    }
-
-    override fun onDestroy() {
-        handler.removeCallbacks(saveRunnable)
-        locationManager.removeUpdates(locationListener)
-        motionSensorListener?.let { sensorManager.unregisterListener(it) }
-        releaseWakeLock()
-        stopForeground(true)
-        setServiceRunning(false)
-        super.onDestroy()
-    }
-
     override fun getTaskConfig(intent: Intent?): HeadlessJsTaskConfig? {
         return intent?.extras?.let {
             HeadlessJsTaskConfig("BackgroundTask", Arguments.fromBundle(it), 5000, true)
+        }
+    }
+
+    override fun onDestroy() {
+        try {
+            // Stop location updates
+            if (::saveRunnable.isInitialized) {
+                handler.removeCallbacks(saveRunnable)
+            }
+            locationManager.removeUpdates(locationListener)
+
+            // Unregister sensors and receivers
+            motionSensorListener?.let { sensorManager.unregisterListener(it) }
+            unregisterReceiver(screenLockReceiver)
+
+            // Flush any remaining data
+            TravelHistoryManager.flushBackgroundHistoryIfNeeded(this)
+            TravelHistoryManager.flushLockHistory(this)
+
+            stopForeground(true)
+            setServiceRunning(false)
+
+            Log.d("ServiceDestroy", "Service destroyed successfully")
+        } catch (error: Exception) {
+            Log.e("ServiceDestroy", "Error during cleanup", error)
+        } finally {
+            super.onDestroy()
         }
     }
 }

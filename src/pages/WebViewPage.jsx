@@ -40,7 +40,7 @@ const WebViewPage = () => {
   const blutoothRef = useRef(false);
   const isDialogVisible = useRef(false);
   const isPaymentProcess = useRef(false);
-  const refContext = useRef({ traversalUpdate: null, networkStatus: null, locationStatus: null, appStatus: null });
+  const refContext = useRef({ traversalUpdate: null, networkStatus: null, locationStatus: null, appStatus: null,serverTime:null });
   const [status, setStatus] = useState({ networkStatus: false, locationStatus: false });
 
   useEffect(() => {
@@ -84,8 +84,15 @@ const WebViewPage = () => {
       'onTraversalUpdate',
       history => {
         const data = JSON.parse(history);
-        console.log("history",data);
         action.handleTravelHistory('history', data, webViewRef);
+
+      }
+    );
+    const lockSub = DeviceEventEmitter.addListener(
+      'onLockHistoryUpdate',
+      lockHistory => {
+        const data = JSON.parse(lockHistory);
+        action.handleSaveLockHistory( data, webViewRef);
 
       }
     );
@@ -94,6 +101,7 @@ const WebViewPage = () => {
     return () => {
       travelSub?.remove();
       avatorSub?.remove();
+      lockSub?.remove();
     };
   }, []);
   const handleAppStateChange = async nextAppState => {
@@ -223,7 +231,7 @@ const WebViewPage = () => {
             key={webKey}
             ref={webViewRef}
             onMessage={handleMessage}
-            source={{ uri: ' https://fir-project-d59e1.web.app' }}
+            source={{ uri: 'http://192.168.207.144:3000' }}
             style={{ flex: 1, minHeight: '100%' }} // ✅ Ensure full height
             geolocationEnabled={true}
             mediaPlaybackRequiresUserAction={false}

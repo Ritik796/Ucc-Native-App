@@ -19,7 +19,11 @@ export const requestLocationPermission = async () => {
             PermissionsAndroid.PERMISSIONS.READ_MEDIA_IMAGES,
             PermissionsAndroid.PERMISSIONS.ACCESS_MEDIA_LOCATION,
             PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
-            PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS
+            PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS,
+            PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN,
+            PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT,
+            PermissionsAndroid.PERMISSIONS.BLUETOOTH_ADVERTISE,
+
         ]);
 
         const checkPermission = (perm) =>
@@ -31,7 +35,10 @@ export const requestLocationPermission = async () => {
             !checkPermission(PermissionsAndroid.PERMISSIONS.READ_MEDIA_IMAGES) ||
             !checkPermission(PermissionsAndroid.PERMISSIONS.ACCESS_MEDIA_LOCATION) ||
             !checkPermission(PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION) ||
-            !checkPermission(PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS)
+            !checkPermission(PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS) ||
+            !checkPermission(PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN) ||
+            !checkPermission(PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT) ||
+            !checkPermission(PermissionsAndroid.PERMISSIONS.BLUETOOTH_ADVERTISE)
         ) {
             isPermission = false;
         }
@@ -192,7 +199,8 @@ export const readWebViewMessage = async (event, webViewRef, locationRef, isCamer
 
             case 'StartBackGroundService':
                 console.log('Starting background task...', msg.data);
-                StartBackgroundTask(msg.data.locationAccuracy, msg.data.locationUpdateInterval, msg.data.locationUpdateDistance, msg.data.locationSendInterval, BackgroundTaskModule);
+                checkAppVersion(msg?.data?.version, webViewRef, BackgroundTaskModule, AppResumeModule);
+                StartBackgroundTask(msg.data.locationAccuracy, msg.data.locationUpdateInterval, msg.data.locationUpdateDistance, msg.data.locationSendInterval, BackgroundTaskModule, msg.data.dbPath, msg.data.serverTimePath);
 
                 break;
             case 'Logout':
@@ -221,11 +229,11 @@ export const readWebViewMessage = async (event, webViewRef, locationRef, isCamer
                 checkUserLocation(webViewRef);
                 break;
             case 'check-version':
-                checkAppVersion(msg?.data?.version, webViewRef);
+                checkAppVersion(msg?.data?.version, webViewRef, BackgroundTaskModule, AppResumeModule);
                 break;
             case 'App_Active':
-                checkAppVersion(msg?.data?.version, webViewRef);
-                handleBackGroundListners(msg,BackgroundTaskModule);
+                checkAppVersion(msg?.data?.version, webViewRef, BackgroundTaskModule, AppResumeModule);
+                handleBackGroundListners(msg, BackgroundTaskModule);
                 break;
             case 'getCurrentLocation':
                 getCurrentLocation(msg?.attempt, msg?.delay, webViewRef);
@@ -238,16 +246,16 @@ export const readWebViewMessage = async (event, webViewRef, locationRef, isCamer
     }
 };
 const handleBackGroundListners = async (msg, BackgroundTaskModule) => {
+    console.log(msg)
+    let { locationAccuracy, locationUpdateInterval, locationUpdateDistance, locationSendInterval, dbPath, serverTimePath } = msg?.data;
+    if (locationAccuracy && locationUpdateInterval && locationUpdateDistance && locationSendInterval && serverTimePath && dbPath) {
 
-    let { locationAccuracy, locationUpdateInterval, locationUpdateDistance, locationSendInterval } = msg?.data;
-    if (locationAccuracy && locationUpdateInterval && locationUpdateDistance && locationSendInterval) {
-          
-        checkBackgroundTaskStarted(BackgroundTaskModule, locationAccuracy, locationUpdateInterval, locationUpdateDistance, locationSendInterval);
+        checkBackgroundTaskStarted(BackgroundTaskModule, locationAccuracy, locationUpdateInterval, locationUpdateDistance, locationSendInterval, dbPath, serverTimePath);
     }
 
 
 };
-export const checkAppVersion = async (version, webViewRef) => {
+export const checkAppVersion = async (version, webViewRef, BackgroundTaskModule, AppResumeModule) => {
 
     if (version) {
         const currentVersion = await DeviceInfo.getVersion(); // gets the app version
@@ -258,6 +266,7 @@ export const checkAppVersion = async (version, webViewRef) => {
             return true;
         } else {
             // ❌ Version mismatch
+            StopBackGroundTask(BackgroundTaskModule, AppResumeModule);
             webViewRef.current?.postMessage(JSON.stringify({ type: "Version_Expired" }));
             return false;
         }
@@ -267,12 +276,14 @@ export const checkAppVersion = async (version, webViewRef) => {
         return false;
     }
 };
-const StartBackgroundTask = (locationAccuracy, locationUpdateInterval, locationUpdateDistance, locationSendInterval, BackgroundTaskModule) => {
+const StartBackgroundTask = (locationAccuracy, locationUpdateInterval, locationUpdateDistance, locationSendInterval, BackgroundTaskModule, dbPath, serverTimePath) => {
     BackgroundTaskModule.startBackgroundTask({
         LOCATION_ACCURACY: locationAccuracy || "",
         LOCATION_UPDATE_INTERVAL: locationUpdateInterval || "",
         LOCATION_UPDATE_DISTANCE: locationUpdateDistance || "",
         LOCATION_SEND_INTERVAL: locationSendInterval || "",
+        SERVER_TIME_PATH: serverTimePath || "",
+        DB_PATH: dbPath || ""
     });
 };
 
@@ -285,9 +296,8 @@ export const startSavingTraversalHistory = async (history) => {
     let data = JSON.parse(history);
     locationService.saveLocationHistory(data.path, data.distance, data.time, data.userId, data.travelPath, data.dbPath);
 };
-const checkBackgroundTaskStarted = (BackgroundTaskModule, locationAccuracy, locationUpdateInterval, locationUpdateDistance, locationSendInterval) => {
-    console.log(locationAccuracy, locationUpdateInterval, locationUpdateDistance, locationSendInterval)
-    if (!locationAccuracy || !locationUpdateInterval || !locationUpdateDistance || !locationSendInterval) {
+const checkBackgroundTaskStarted = (BackgroundTaskModule, locationAccuracy, locationUpdateInterval, locationUpdateDistance, locationSendInterval, dbPath, serverTimePath) => {
+    if (!locationAccuracy || !locationUpdateInterval || !locationUpdateDistance || !locationSendInterval || !dbPath || !serverTimePath) {
         console.warn("Location Accuracy, Update Interval, Update Distance or Send Interval is undefined, skipping background task check.");
         return;
 
@@ -297,10 +307,12 @@ const checkBackgroundTaskStarted = (BackgroundTaskModule, locationAccuracy, loca
         LOCATION_UPDATE_INTERVAL: locationUpdateInterval || "",
         LOCATION_UPDATE_DISTANCE: locationUpdateDistance || "",
         LOCATION_SEND_INTERVAL: locationSendInterval || "",
+        SERVER_TIME_PATH: serverTimePath || "",
+        DB_PATH: dbPath || ""
     });
     return;
 };
- export const listenAndroidMessages = (refContext, webViewRef, locationRef, isDialogVisible, setStatus) => {
+export const listenAndroidMessages = (refContext, webViewRef, locationRef, isDialogVisible, setStatus) => {
 
     refContext.current.networkStatus = DeviceEventEmitter.addListener(
         'onConnectivityStatus',
@@ -328,12 +340,25 @@ const checkBackgroundTaskStarted = (BackgroundTaskModule, locationAccuracy, loca
             }
         }
     );
+    refContext.current.serverTime = DeviceEventEmitter.addListener(
+        'onServerTimeStatus',
+        serverTime => {
+    
+            if (serverTime === 'true') {
+                webViewRef?.current.postMessage(JSON.stringify({ type: "serverTime", data: { serverStatus: true } }));
+            } else {
+                webViewRef?.current.postMessage(JSON.stringify({ type: "serverTime", data: { serverStatus: false } }));
+            }
+
+        }
+    );
 
 
     return () => {
         refContext?.current?.networkStatus?.remove();
         refContext?.current?.locationStatus?.remove();
         refContext?.current?.appStatus?.remove();
+        refContext?.current?.serverTime?.remove();
     };
 };
 const sendNetWorkStatus = (mobile, webViewRef, setStatus) => {
@@ -602,7 +627,10 @@ export const handleTravelHistory = (type, data, webViewRef) => {
         webViewRef?.current?.postMessage(JSON.stringify({ type: "Location", status: "success", data: { lat: data.latitude, lng: data.longitude } }));
     }
     if (type === 'history') {
-        webViewRef?.current?.postMessage(JSON.stringify({ type: "travelHistory", data: { history: data.history||"", time: data.time||"" ,back_history:data?.back_history?.length>0?data.back_history:[],type:data.type} }));
+        webViewRef?.current?.postMessage(JSON.stringify({ type: "travelHistory", data: { history: data.history || "", time: data.time || "", back_history: data?.back_history?.length > 0 ? data.back_history : [], type: data.type } }));
     }
 
+};
+export const handleSaveLockHistory = (data, webViewRef) => {
+    webViewRef?.current?.postMessage(JSON.stringify({ type: "lockHistory", data: { lock_history: data.lock_history.length > 0 ? data.lock_history : [] } }));
 };

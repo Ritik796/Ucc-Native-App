@@ -6,13 +6,13 @@ import android.content.Intent
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
-import com.facebook.react.bridge.ReactApplicationContext
-import com.facebook.react.bridge.ReactContextBaseJavaModule
-import com.facebook.react.bridge.ReactMethod
-import com.facebook.react.bridge.ReadableMap
-import java.util.Calendar
+import android.util.Log
+import com.facebook.react.bridge.*
+import com.facebook.react.modules.core.DeviceEventManagerModule
+import com.google.firebase.database.*
 import com.wevois.paymentapp.MyTaskService.TravelHistoryManager.flushBackgroundHistoryIfNeeded
-
+import com.wevois.paymentapp.MyTaskService.TravelHistoryManager.flushLockHistory
+import java.util.*
 
 class BackgroundTaskModule(reactContext: ReactApplicationContext) :
     ReactContextBaseJavaModule(reactContext) {
@@ -21,6 +21,11 @@ class BackgroundTaskModule(reactContext: ReactApplicationContext) :
     private val minStartInterval = 10_000L // 10 seconds
     private val handler = Handler(Looper.getMainLooper())
     private var runnable: Runnable? = null
+    private var serverTimeListener: ValueEventListener? = null
+    private var serverTimeRef: DatabaseReference? = null
+    private var currentServerTimePath: String? = null
+
+
     override fun getName(): String {
         return "BackgroundTaskModule"
     }
@@ -29,55 +34,57 @@ class BackgroundTaskModule(reactContext: ReactApplicationContext) :
     @ReactMethod
     fun startBackgroundTask(options: ReadableMap) {
         val currentTime = System.currentTimeMillis()
-        if (currentTime - lastStartTime < minStartInterval) {
-
-            return
-        }
+        if (currentTime - lastStartTime < minStartInterval) return
         lastStartTime = currentTime
 
         val context = reactApplicationContext
-        val accuracy = if (options.hasKey("LOCATION_ACCURACY")) options.getString("LOCATION_ACCURACY") else null
-        val updateDistance = if (options.hasKey("LOCATION_UPDATE_DISTANCE")) options.getString("LOCATION_UPDATE_DISTANCE") else null
-        val sendDelay = if (options.hasKey("LOCATION_SEND_INTERVAL")) options.getString("LOCATION_SEND_INTERVAL") else null
-        val updateInterval = if (options.hasKey("LOCATION_UPDATE_INTERVAL")) options.getString("LOCATION_UPDATE_INTERVAL") else null
 
-        if (accuracy.isNullOrEmpty() || updateDistance.isNullOrEmpty() || sendDelay.isNullOrEmpty() || updateInterval.isNullOrEmpty()) {
+        val accuracy = options.getStringSafe("LOCATION_ACCURACY")
+        val updateDistance = options.getStringSafe("LOCATION_UPDATE_DISTANCE")
+        val sendDelay = options.getStringSafe("LOCATION_SEND_INTERVAL")
+        val updateInterval = options.getStringSafe("LOCATION_UPDATE_INTERVAL")
+        val serverTimePath = options.getStringSafe("SERVER_TIME_PATH")
+        val dbPath = options.getStringSafe("DB_PATH")
 
-            return
-        }
-
+        if (accuracy.isNullOrEmpty() || updateDistance.isNullOrEmpty() ||
+            sendDelay.isNullOrEmpty() || updateInterval.isNullOrEmpty()
+        ) return
 
         val serviceIntent = Intent(context, MyTaskService::class.java).apply {
             putExtra("LOCATION_ACCURACY", accuracy)
             putExtra("LOCATION_UPDATE_DISTANCE", updateDistance)
-            putExtra("LOCATION_UPDATE_INTERVAL",updateInterval)
-            putExtra("LOCATION_SEND_INTERVAL",sendDelay)
+            putExtra("LOCATION_UPDATE_INTERVAL", updateInterval)
+            putExtra("LOCATION_SEND_INTERVAL", sendDelay)
         }
 
-        // Version check for startForegroundService
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             context.startForegroundService(serviceIntent)
         } else {
             context.startService(serviceIntent)
         }
+
+        startServerTimeListener(dbPath.toString(), serverTimePath.toString())
+        flushBackgroundHistoryIfNeeded(context)
+        flushLockHistory(context)
         startTimeChecker()
     }
 
     @ReactMethod
     fun checkAndRestartBackgroundTask(options: ReadableMap) {
         val context = reactApplicationContext
-        flushBackgroundHistoryIfNeeded(context)
-        val accuracy = if (options.hasKey("LOCATION_ACCURACY")) options.getString("LOCATION_ACCURACY") else null
-        val updateDistance = if (options.hasKey("LOCATION_UPDATE_DISTANCE")) options.getString("LOCATION_UPDATE_DISTANCE") else null
-        val sendDelay = if (options.hasKey("LOCATION_SEND_INTERVAL")) options.getString("LOCATION_SEND_INTERVAL") else null
-        val updateInterval = if (options.hasKey("LOCATION_UPDATE_INTERVAL")) options.getString("LOCATION_UPDATE_INTERVAL") else null
 
-        if (accuracy.isNullOrEmpty() || updateDistance.isNullOrEmpty() || sendDelay.isNullOrEmpty() || updateInterval.isNullOrEmpty()) {
-            return
-        }
+        val sendDelay = options.getStringSafe("LOCATION_SEND_INTERVAL")
+        val updateInterval = options.getStringSafe("LOCATION_UPDATE_INTERVAL")
+        val accuracy = options.getStringSafe("LOCATION_ACCURACY")
+        val updateDistance = options.getStringSafe("LOCATION_UPDATE_DISTANCE")
+        val serverTimePath = options.getStringSafe("SERVER_TIME_PATH")
+        val dbPath = options.getStringSafe("DB_PATH")
+
+        if (accuracy.isNullOrEmpty() || updateDistance.isNullOrEmpty() ||
+            sendDelay.isNullOrEmpty() || updateInterval.isNullOrEmpty()
+        ) return
 
         if (!isServiceRunning(MyTaskService::class.java)) {
-
             val serviceIntent = Intent(context, MyTaskService::class.java).apply {
                 putExtra("LOCATION_ACCURACY", accuracy)
                 putExtra("LOCATION_UPDATE_DISTANCE", updateDistance)
@@ -90,20 +97,32 @@ class BackgroundTaskModule(reactContext: ReactApplicationContext) :
             } else {
                 context.startService(serviceIntent)
             }
+        }
+        startServerTimeListener(dbPath.toString(), serverTimePath.toString())
+        flushBackgroundHistoryIfNeeded(context)
+        flushLockHistory(context)
+        startTimeChecker()
+    }
 
+    private fun ReadableMap.getStringSafe(key: String): String? {
+        if (!this.hasKey(key)) return null
 
-
-            startTimeChecker()
+        val dynamic = this.getDynamic(key)
+        return if (dynamic.isNull) {
+            null
+        } else {
+            when (dynamic.type) {
+                ReadableType.String -> dynamic.asString()
+                ReadableType.Number -> dynamic.asDouble().toString()
+                else -> null
+            }
         }
     }
 
-
-
-
-
     @SuppressLint("MissingPermission", "DeprecatedMethod")
     private fun isServiceRunning(serviceClass: Class<*>): Boolean {
-        val activityManager = reactApplicationContext.getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
+        val activityManager =
+            reactApplicationContext.getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
         @Suppress("DEPRECATION")
         for (service in activityManager.getRunningServices(Int.MAX_VALUE)) {
             if (serviceClass.name == service.service.className) {
@@ -119,9 +138,8 @@ class BackgroundTaskModule(reactContext: ReactApplicationContext) :
         val serviceIntent = Intent(context, MyTaskService::class.java)
         context.stopService(serviceIntent)
         stopTimeChecker()
+        stopServerTimeListener()
     }
-
-
 
     private fun startTimeChecker() {
         runnable = object : Runnable {
@@ -155,5 +173,71 @@ class BackgroundTaskModule(reactContext: ReactApplicationContext) :
             set(Calendar.MILLISECOND, 0)
         }
         return nextMinute.timeInMillis - now.timeInMillis
+    }
+
+    // ✅ Working Realtime Listener
+    @ReactMethod
+
+
+
+
+   private fun startServerTimeListener(dbPath: String, serverTimePath: String) {
+        val baseUrl = dbPath.trimEnd('/')
+        val relativePath = serverTimePath.trimStart('/')
+        currentServerTimePath = relativePath
+
+        // Avoid constructing full URL, just use FirebaseDatabase.getInstance()
+        try {
+            val db = FirebaseDatabase.getInstance(baseUrl)
+            serverTimeRef = db.getReference(relativePath)
+
+            Log.d("ServerTimeMonitor", "📡 Initialized reference at path: $relativePath")
+
+            serverTimeListener = object : ValueEventListener {
+                override fun onDataChange(snapshot: DataSnapshot) {
+                    val serverTimeValue = snapshot.value?.toString() ?: ""
+                    Log.d("ServerTimeMonitor", "⏱ Server time updated: $serverTimeValue")
+
+                    if (serverTimeValue.isEmpty()) {
+                        reactApplicationContext
+                            .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+                            .emit("onServerTimeStatus", "false")
+                    }
+                    else{
+                        reactApplicationContext
+                            .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+                            .emit("onServerTimeStatus", "true")
+                    stopBackgroundTask()
+                    }
+                }
+
+                override fun onCancelled(error: DatabaseError) {
+                    Log.e("ServerTimeMonitor", "❌ Server time listener cancelled: ${error.message}")
+                }
+            }
+
+            serverTimeRef?.addValueEventListener(serverTimeListener!!)
+            Log.d("ServerTimeMonitor", "✅ Listener added successfully.")
+
+        } catch (e: Exception) {
+            Log.e("ServerTimeMonitor", "🚨 Failed to initialize Firebase reference: ${e.message}")
+        }
+    }
+
+
+
+    // ✅ To stop Firebase real-time listener
+    @ReactMethod
+    fun stopServerTimeListener() {
+        if (serverTimeRef != null && serverTimeListener != null) {
+            serverTimeRef?.removeEventListener(serverTimeListener!!)
+            Log.d("ServerTimeMonitor", "🛑 Listener removed from path: $currentServerTimePath")
+        } else {
+            Log.d("ServerTimeMonitor", "ℹ️ No active listener to remove.")
+        }
+
+        serverTimeListener = null
+        serverTimeRef = null
+        currentServerTimePath = null
     }
 }

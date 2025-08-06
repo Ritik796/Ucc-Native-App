@@ -34,8 +34,11 @@ class TraversalReceiverModule(private val reactContext: ReactApplicationContext)
 
                 "travel_history" -> {
                     val data = intent.getStringExtra("travel_history") ?: return
-                    Log.d("LocationUpdate","travel_history: $data")
                     sendEvent("onTraversalUpdate", data)
+                }
+                "lock_history" -> {
+                    val data = intent.getStringExtra("lock_history") ?: return
+                    sendEvent("onLockHistoryUpdate", data)
                 }
 
 
@@ -57,6 +60,7 @@ class TraversalReceiverModule(private val reactContext: ReactApplicationContext)
             val filter = IntentFilter().apply {
                 addAction("AVATAR_LOCATION_UPDATE")
                 addAction("travel_history")
+                addAction("lock_history")
             }
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
