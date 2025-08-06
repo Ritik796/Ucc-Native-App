@@ -223,7 +223,7 @@ export const readWebViewMessage = async (event, webViewRef, locationRef, isCamer
                 }, 2000);
                 break;
             case 'paymentStatus':
-                getPaymentStatusFromApi(webViewRef, msg?.data?.url, msg?.data?.payloadData, msg?.data?.deviceType);
+                getPaymentStatusFromApi(webViewRef, msg?.data?.url, msg?.data?.payloadData, msg?.data?.deviceType, msg?.data?.checkDelay, msg?.data?.serverTimeout, msg?.data?.maxAttempts, msg?.data?.orangeTimeout);
                 break;
             case 'check-location':
                 checkUserLocation(webViewRef);
@@ -341,7 +341,7 @@ export const listenAndroidMessages = (refContext, webViewRef, locationRef, isDia
     refContext.current.serverTime = DeviceEventEmitter.addListener(
         'onServerTimeStatus',
         serverTime => {
-    
+
             if (serverTime === 'true') {
                 webViewRef?.current.postMessage(JSON.stringify({ type: "serverTime", data: { serverStatus: true } }));
             } else {
@@ -438,9 +438,9 @@ const sendPaymentRequestToUrl = async (paymentPayload, url, deviceType, webViewR
         webViewRef.current?.injectJavaScript(errorJS);
     }
 };
-const getPaymentStatusFromApi = (webViewRef, url, payloadData, deviceType) => {
+const getPaymentStatusFromApi = (webViewRef, url, payloadData, deviceType, checkDelay = 6000, serverTimeout = 120500, maxAttempts = 35, orangeTimeout = 110500) => {
     if (deviceType === 'pine') {
-        checkPineTransactionStatus(webViewRef, url, payloadData);
+        checkPineTransactionStatus(webViewRef, url, payloadData, checkDelay, maxAttempts);
     } else {
         const startTime = Date.now();
         const control = { sent: false }; // ✅ this object is shared by reference
@@ -448,8 +448,8 @@ const getPaymentStatusFromApi = (webViewRef, url, payloadData, deviceType) => {
         const intervalId = setInterval(() => {
             const elapsedTime = Date.now() - startTime;
 
-            if (elapsedTime < 120500 && !control.sent) {
-                checkOrangeTransactionStatus(webViewRef, url, payloadData, elapsedTime, control);
+            if (elapsedTime < serverTimeout && !control.sent) {
+                checkOrangeTransactionStatus(webViewRef, url, payloadData, elapsedTime, control, orangeTimeout);
             } else if (!control.sent) {
                 const errorJS = `
                     window.dispatchEvent(new MessageEvent('message', {
@@ -463,14 +463,14 @@ const getPaymentStatusFromApi = (webViewRef, url, payloadData, deviceType) => {
                 control.sent = true;
                 clearInterval(intervalId);
             }
-        }, 6000);
+        }, checkDelay);
 
         return () => clearInterval(intervalId);
     }
 };
-const checkPineTransactionStatus = (webViewRef, url, payloadData) => {
+const checkPineTransactionStatus = (webViewRef, url, payloadData, checkDelay, maxAttempts) => {
     let attempt = 1;
-    const maxAttempts = 35;
+    // const maxAttempts = 35;
     const interval = setInterval(async () => {
         try {
             const response = await axios.post(url, payloadData, {
@@ -536,9 +536,9 @@ const checkPineTransactionStatus = (webViewRef, url, payloadData) => {
             clearInterval(interval);
             return;
         }
-    }, 6000);
+    }, checkDelay);
 };
-const checkOrangeTransactionStatus = async (webViewRef, url, payloadData, elapsedTime, control) => {
+const checkOrangeTransactionStatus = async (webViewRef, url, payloadData, elapsedTime, control, orangeTimeout) => {
     try {
         const response = await axios.post(url, payloadData, {
             headers: { 'Content-Type': 'application/json' }
@@ -571,7 +571,7 @@ const checkOrangeTransactionStatus = async (webViewRef, url, payloadData, elapse
             webViewRef.current?.injectJavaScript(failJS);
             control.sent = true;
         } else if ((code === 1 || code === 1052) && !control.sent) {
-            if (elapsedTime > 110500) {
+            if (elapsedTime > orangeTimeout) {
                 const failJS = `
             window.dispatchEvent(new MessageEvent('message', {
                 data: JSON.stringify({
