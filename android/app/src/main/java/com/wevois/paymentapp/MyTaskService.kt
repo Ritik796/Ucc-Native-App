@@ -296,6 +296,7 @@ class MyTaskService : HeadlessJsTaskService() {
 
             Log.d("LockHistory", "All entries have valid locations, proceeding with flush")
             sendLockHistoryToWebView(context)
+            lockHistoryList.clear()
         }
 
         fun flushBackgroundHistoryIfNeeded(context: Context) {
@@ -537,7 +538,7 @@ class MyTaskService : HeadlessJsTaskService() {
 
         val notification = NotificationCompat.Builder(this, channelId)
             .setContentTitle("WeVOIS Payment App")
-            .setContentText("Location tracking active")
+            .setContentText("Background service is running")
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setSmallIcon(android.R.drawable.ic_dialog_info)

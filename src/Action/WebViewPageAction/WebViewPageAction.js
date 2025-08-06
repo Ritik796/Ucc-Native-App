@@ -255,27 +255,25 @@ const handleBackGroundListners = async (msg, BackgroundTaskModule) => {
 
 
 };
-export const checkAppVersion = async (version, webViewRef, BackgroundTaskModule, AppResumeModule) => {
-
+export const checkAppVersion = async (version, webViewRef) => {
+    console.log('version', version);
     if (version) {
-        const currentVersion = await DeviceInfo.getVersion(); // gets the app version
-        const required = version?.toString()?.trim(); // ensures version is a trimmed string
-        // ✅ If versions match
+        const currentVersion = await DeviceInfo.getVersion();
+        const required = version?.toString()?.trim();
         if (required === currentVersion?.toString()?.trim()) {
             webViewRef.current?.postMessage(JSON.stringify({ type: "Version_Valid" }));
             return true;
         } else {
-            // ❌ Version mismatch
-            StopBackGroundTask(BackgroundTaskModule, AppResumeModule);
+            // Step 1: Just inform JS, don’t close app yet
             webViewRef.current?.postMessage(JSON.stringify({ type: "Version_Expired" }));
             return false;
         }
     } else {
-        // ❌ Version is not provided
         webViewRef.current?.postMessage(JSON.stringify({ type: "Version_Expired" }));
         return false;
     }
 };
+
 const StartBackgroundTask = (locationAccuracy, locationUpdateInterval, locationUpdateDistance, locationSendInterval, BackgroundTaskModule, dbPath, serverTimePath) => {
     BackgroundTaskModule.startBackgroundTask({
         LOCATION_ACCURACY: locationAccuracy || "",
