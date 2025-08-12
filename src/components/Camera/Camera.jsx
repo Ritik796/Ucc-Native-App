@@ -115,9 +115,9 @@ const CameraComponent = ({
 
   const handleClose = () => {
     setCameraOpen(false);
+    setIsVisible(false);
     setTimeout(() => {
       setShowCamera(false);
-      setIsVisible(false);
       setShowPreview(false);
     }, 300);
   };
@@ -144,7 +144,7 @@ const CameraComponent = ({
               {showPreview ? (
                 <Image
                   source={{ uri: base64Image }}
-                  style={{ width: '100%', height: '100%', resizeMode: 'cover' }}
+                  style={{ width: '100%', height: '100%', resizeMode: 'contain' }}
                   onLoadEnd={() => setLoader(false)}
                 />
               ) : (
