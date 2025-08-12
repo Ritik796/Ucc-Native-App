@@ -240,7 +240,7 @@ export const readWebViewMessage = async (event, webViewRef, locationRef, isCamer
                 getCurrentLocation(msg?.attempt, msg?.delay, webViewRef);
                 break;
             case 'reload':
-                reloadApplication(webViewRef);
+                reloadApplication(webViewRef,msg?.data);
                 break;
             default:
                 break;
