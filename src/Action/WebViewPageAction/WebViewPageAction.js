@@ -4,6 +4,7 @@ import Geolocation from "@react-native-community/geolocation";
 import DeviceInfo from "react-native-device-info";
 import * as locationService from '../../Services/LocationServices';
 import { getCurrentLocation } from "../../Services/commonFunctions";
+import RNRestart from 'react-native-restart';
 
 
 export const requestLocationPermission = async () => {
@@ -237,6 +238,9 @@ export const readWebViewMessage = async (event, webViewRef, locationRef, isCamer
                 break;
             case 'getCurrentLocation':
                 getCurrentLocation(msg?.attempt, msg?.delay, webViewRef);
+                break;
+            case 'reload':
+                reloadApplication(webViewRef);
                 break;
             default:
                 break;
@@ -632,3 +636,13 @@ export const handleTravelHistory = (type, data, webViewRef) => {
 export const handleSaveLockHistory = (data, webViewRef) => {
     webViewRef?.current?.postMessage(JSON.stringify({ type: "lockHistory", data: { lock_history: data.lock_history.length > 0 ? data.lock_history : [] } }));
 };
+
+const reloadApplication = (webViewRef, type) => {
+    if (webViewRef.current && type === 'reloadWeb') {
+        console.log('reload web view');
+        webViewRef.current.reload();
+    } else {
+        console.log('reload whole application');
+        RNRestart.restart();
+    }
+}
