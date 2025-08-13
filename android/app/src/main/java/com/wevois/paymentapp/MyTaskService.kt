@@ -6,7 +6,6 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.hardware.*
 import android.location.*
 import android.os.*
 import android.util.Log
@@ -26,8 +25,6 @@ class MyTaskService : HeadlessJsTaskService() {
 
     private lateinit var locationManager: LocationManager
     private lateinit var locationListener: LocationListener
-    private lateinit var sensorManager: SensorManager
-    private var motionSensorListener: SensorEventListener? = null
 
     private val handler = Handler(Looper.getMainLooper())
     private lateinit var saveRunnable: Runnable
@@ -43,9 +40,6 @@ class MyTaskService : HeadlessJsTaskService() {
     private var maxDistanceCanCover = maxDistance
     private var minuteDistance: Double = 0.0
     private val traversalHistory = StringBuilder()
-    private var isDeviceMoving = false
-    private var lastAcceleration = FloatArray(3)
-    private val accelerationThreshold = 0.5f
     private var isWaitingForUnlockLocation = false
     private var isDeviceLocked = false
 
@@ -53,9 +47,7 @@ class MyTaskService : HeadlessJsTaskService() {
         super.onCreate()
         startForegroundServiceWithNotification()
         locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
-        sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
         registerScreenLockReceiver()
-        setupMotionSensor()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -151,13 +143,8 @@ class MyTaskService : HeadlessJsTaskService() {
             isWaitingForUnlockLocation = false
         }
 
-        // Check for significant movement
-        val latDiff = abs(previousLat!! - lat)
-        val lngDiff = abs(previousLng!! - lng)
 
-        if (!isDeviceMoving && latDiff < 0.00005 && lngDiff < 0.00005) {
-            return
-        }
+
 
         val distance = getDistance(previousLat!!, previousLng!!, lat, lng)
 
@@ -185,6 +172,7 @@ class MyTaskService : HeadlessJsTaskService() {
             putExtra("latitude", lat)
             putExtra("longitude", lng)
         }
+        Log.d("LocationUpdate","AVATAR_LOCATION_UPDATE $lat,$lng")
         sendBroadcast(intent)
     }
 
@@ -232,8 +220,13 @@ class MyTaskService : HeadlessJsTaskService() {
         }
 
         fun addLockHistory(json: JSONObject) {
-            Log.d("LockHistory", "Added lock/unlock event: $json")
-            lockHistoryList.add(json)
+            val latLng = json.optString("lat_lng", "")
+            if (latLng.isNotEmpty() && latLng.isNotBlank()) {
+                lockHistoryList.add(json)
+                Log.d("LockHistory", "Added entry to history: ${json.optString("status")} at ${json.optString("time")}")
+            } else {
+                Log.d("LockHistory", "Skipping entry with empty location: ${json.optString("status")} at ${json.optString("time")}")
+            }
         }
 
         fun updateLastUnlockWithLatLng(lat: Double, lng: Double, context: Context) {
@@ -279,22 +272,31 @@ class MyTaskService : HeadlessJsTaskService() {
                 return
             }
 
-            // Check if any entry has empty lat_lng
-            val hasEmptyLocation = lockHistoryList.any { item ->
+            // Filter out entries with empty lat_lng
+            val initialSize = lockHistoryList.size
+            val iterator = lockHistoryList.iterator()
+            while (iterator.hasNext()) {
+                val item = iterator.next()
                 val latLng = item.optString("lat_lng", "")
                 val isEmpty = latLng.isEmpty() || latLng.isBlank()
+
                 if (isEmpty) {
-                    Log.d("LockHistory", "Found entry with empty location: ${item.optString("status")} at ${item.optString("time")}")
+                    Log.d("LockHistory", "Removing entry with empty location: ${item.optString("status")} at ${item.optString("time")}")
+                    iterator.remove()
                 }
-                isEmpty
             }
 
-            if (hasEmptyLocation) {
-                Log.d("LockHistory", "Skipping flush - some entries have empty lat_lng, waiting for location updates")
+            val filteredCount = initialSize - lockHistoryList.size
+            if (filteredCount > 0) {
+                Log.d("LockHistory", "Filtered out $filteredCount entries with empty locations")
+            }
+
+            if (lockHistoryList.isEmpty()) {
+                Log.d("LockHistory", "No valid entries to flush after filtering")
                 return
             }
 
-            Log.d("LockHistory", "All entries have valid locations, proceeding with flush")
+            Log.d("LockHistory", "Sending ${lockHistoryList.size} valid entries to WebView")
             sendLockHistoryToWebView(context)
             lockHistoryList.clear()
         }
@@ -411,9 +413,6 @@ class MyTaskService : HeadlessJsTaskService() {
         if (!isAppInBackground(this)) {
             TravelHistoryManager.flushLockHistory(this)
         }
-
-        // Stop location updates to save battery when locked
-        stopLocationUpdatesTemporarily()
     }
 
     private fun onDeviceUnlocked() {
@@ -434,21 +433,8 @@ class MyTaskService : HeadlessJsTaskService() {
         // Flag to update unlock location when next GPS fix is received
         isWaitingForUnlockLocation = true
 
-        // Resume location updates
-        startLocationManagerUpdates()
     }
 
-    private fun stopLocationUpdatesTemporarily() {
-        try {
-            if (::saveRunnable.isInitialized) {
-                handler.removeCallbacks(saveRunnable)
-            }
-            locationManager.removeUpdates(locationListener)
-            Log.d("LocationService", "Location updates stopped (device locked)")
-        } catch (e: Exception) {
-            Log.e("LocationService", "Error stopping location updates", e)
-        }
-    }
 
     // ====== UTILITY METHODS ======
     private fun getCurrentTime(): String {
@@ -493,29 +479,7 @@ class MyTaskService : HeadlessJsTaskService() {
         return sp.getBoolean("isAppInBackground", false)
     }
 
-    private fun setupMotionSensor() {
-        val accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
-        motionSensorListener = object : SensorEventListener {
-            override fun onSensorChanged(event: SensorEvent?) {
-                event?.let {
-                    val dx = abs(lastAcceleration[0] - it.values[0])
-                    val dy = abs(lastAcceleration[1] - it.values[1])
-                    val dz = abs(lastAcceleration[2] - it.values[2])
-                    val total = sqrt((dx * dx + dy * dy + dz * dz).toDouble())
-                    isDeviceMoving = total > accelerationThreshold
-                    lastAcceleration = it.values.clone()
-                }
-            }
 
-            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
-        }
-
-        sensorManager.registerListener(
-            motionSensorListener,
-            accelerometer,
-            SensorManager.SENSOR_DELAY_UI
-        )
-    }
 
     @SuppressLint("NewApi")
     private fun startForegroundServiceWithNotification() {
@@ -562,7 +526,7 @@ class MyTaskService : HeadlessJsTaskService() {
             locationManager.removeUpdates(locationListener)
 
             // Unregister sensors and receivers
-            motionSensorListener?.let { sensorManager.unregisterListener(it) }
+
             unregisterReceiver(screenLockReceiver)
 
             // Flush any remaining data

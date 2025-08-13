@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, ImageBackground, StyleSheet, Image, Dimensions } from 'react-native';
+import { View, ImageBackground, StyleSheet, Image, Dimensions, Text } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
 const { width, height } = Dimensions.get('window');
@@ -20,6 +20,7 @@ const SplashScreen = () => {
               style={styles.logo}
               resizeMode="contain"
             />
+            <Text style={styles.textValue} >User Charge Collection</Text>
           </View>
         </ImageBackground>
       </SafeAreaView>
@@ -43,11 +44,16 @@ const styles = StyleSheet.create({
   layout: {
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: '30%',
+    marginTop: '10%',
   },
   logo: {
-    width: 220,
-    height: 220,
-    marginBottom: 50,
+    width: 180,
+    height: 180,
+    marginBottom: 10,
+    marginLeft:20
   },
+  textValue:{
+    color:"#707070",
+    fontSize:15
+  }
 });
