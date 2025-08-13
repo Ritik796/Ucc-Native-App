@@ -2,11 +2,11 @@ import RNBluetoothClassic from 'react-native-bluetooth-classic';
 import { PermissionsAndroid, Platform } from "react-native";
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-export const handleBluetoothConnection = async (setError, webViewRef, setDeviceList, setIsDeviceConnected, isDeviceConnected) => {
+export const handleBluetoothConnection = async (setError, webViewRef, setDeviceList, setIsDeviceConnected) => {
     try {
         const bluetoothAccess = await requestBluetoothPermissions(setError);
         if (bluetoothAccess) {
-            setupBluetooth(setError, webViewRef, setDeviceList, setIsDeviceConnected, isDeviceConnected);
+            setupBluetooth(setError, webViewRef, setDeviceList, setIsDeviceConnected);
         }
     } catch (err) {
         console.warn('Permission request error:', err);
@@ -48,14 +48,16 @@ export const setupBluetooth = async (setError, webViewRef, setDeviceList, setIsD
         }
 
         const connectedDevices = await RNBluetoothClassic.getConnectedDevices();
-        let lastConnectedDevice = await AsyncStorage.getItem('lastConnectedDevice');
+        // let lastConnectedDevice = await AsyncStorage.getItem('lastConnectedDevice');
         if (connectedDevices.length > 0) {
             let device = connectedDevices[0];
             handleDevicePairing(device, setError, [], setIsDeviceConnected) // Return the device to use for printing
 
-        } else if (lastConnectedDevice) {
-            retryBtConnection(setIsDeviceConnected)
-        } else {
+        }
+        // else if (lastConnectedDevice) {
+        //     retryBtConnection(setIsDeviceConnected)
+        // } 
+        else {
             // setShowDevices(true);
             getBluetoothDeviceList(webViewRef, setDeviceList);
         }
@@ -173,63 +175,63 @@ export const connectionEstablish = async (webViewRef, isDeviceConnected, deviceL
         deviceData: { name, address }
     });
 }
-export const retryBtConnection = async (setIsDeviceConnected) => {
-    try {
-        const lastConnectedDeviceStr = await AsyncStorage.getItem('lastConnectedDevice');
-        if (!lastConnectedDeviceStr || lastConnectedDeviceStr === 'null') return;
+// export const retryBtConnection = async (setIsDeviceConnected) => {
+//     try {
+//         const lastConnectedDeviceStr = await AsyncStorage.getItem('lastConnectedDevice');
+//         if (!lastConnectedDeviceStr || lastConnectedDeviceStr === 'null') return;
 
-        const lastConnectedAddress = JSON.parse(lastConnectedDeviceStr);
-        const pairedDevices = await RNBluetoothClassic.getBondedDevices();
-        const targetDevice = pairedDevices.find(item => item.address === lastConnectedAddress);
-        if (!targetDevice) return;
+//         const lastConnectedAddress = JSON.parse(lastConnectedDeviceStr);
+//         const pairedDevices = await RNBluetoothClassic.getBondedDevices();
+//         const targetDevice = pairedDevices.find(item => item.address === lastConnectedAddress);
+//         if (!targetDevice) return;
 
-        let retryAttempt = 0;
-        const maxAttempts = 3;
+//         let retryAttempt = 0;
+//         const maxAttempts = 3;
 
-        const attemptConnection = async () => {
-            console.log(`🔄 Attempt ${retryAttempt + 1} to reconnect...`);
+//         const attemptConnection = async () => {
+//             console.log(`🔄 Attempt ${retryAttempt + 1} to reconnect...`);
 
-            const alreadyConnected = await RNBluetoothClassic.getConnectedDevices();
-            if (alreadyConnected.length > 0) {
-                console.log("✅ Already connected to", alreadyConnected[0].name);
-                setIsDeviceConnected(alreadyConnected[0]);
-                return true;
-            }
+//             const alreadyConnected = await RNBluetoothClassic.getConnectedDevices();
+//             if (alreadyConnected.length > 0) {
+//                 console.log("✅ Already connected to", alreadyConnected[0].name);
+//                 setIsDeviceConnected(alreadyConnected[0]);
+//                 return true;
+//             }
 
-            try {
-                // Timeout-wrapped connect
-                await Promise.race([
-                    targetDevice.connect(),
-                    new Promise((_, reject) =>
-                        setTimeout(() => reject(new Error('Connection attempt timed out')), 4000)
-                    )
-                ]);
-                console.log("✅ Connected to", targetDevice.name);
-                setIsDeviceConnected(targetDevice);
-                return true;
-            } catch (err) {
-                console.warn(`⚠️ Attempt ${retryAttempt + 1} failed:`, err.message);
-                return false;
-            }
-        };
+//             try {
+//                 // Timeout-wrapped connect
+//                 await Promise.race([
+//                     targetDevice.connect(),
+//                     new Promise((_, reject) =>
+//                         setTimeout(() => reject(new Error('Connection attempt timed out')), 4000)
+//                     )
+//                 ]);
+//                 console.log("✅ Connected to", targetDevice.name);
+//                 setIsDeviceConnected(targetDevice);
+//                 return true;
+//             } catch (err) {
+//                 console.warn(`⚠️ Attempt ${retryAttempt + 1} failed:`, err.message);
+//                 return false;
+//             }
+//         };
 
-        const intervalId = setInterval(async () => {
-            if (retryAttempt >= maxAttempts) {
-                console.log("❌ Max retries reached, clearing saved device.");
-                await AsyncStorage.removeItem('lastConnectedDevice');
-                clearInterval(intervalId);
-                return;
-            }
+//         const intervalId = setInterval(async () => {
+//             if (retryAttempt >= maxAttempts) {
+//                 console.log("❌ Max retries reached, clearing saved device.");
+//                 await AsyncStorage.removeItem('lastConnectedDevice');
+//                 clearInterval(intervalId);
+//                 return;
+//             }
 
-            const success = await attemptConnection();
-            if (success) {
-                clearInterval(intervalId);
-            } else {
-                retryAttempt++;
-            }
-        }, 3000);
+//             const success = await attemptConnection();
+//             if (success) {
+//                 clearInterval(intervalId);
+//             } else {
+//                 retryAttempt++;
+//             }
+//         }, 3000);
 
-    } catch (err) {
-        console.error("retryBtConnection error:", err);
-    }
-};
+//     } catch (err) {
+//         console.error("retryBtConnection error:", err);
+//     }
+// };

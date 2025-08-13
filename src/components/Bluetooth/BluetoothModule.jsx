@@ -24,8 +24,7 @@ const BluetoothModule = ({
         setError,
         webViewRef,
         setDeviceList,
-        setIsDeviceConnected,
-        isDeviceConnected
+        setIsDeviceConnected
       );
     }
   }, [btEvent]);
