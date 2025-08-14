@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.location.*
+import android.media.RingtoneManager
 import android.os.*
 import android.util.Log
 import androidx.core.app.NotificationCompat
@@ -109,6 +110,7 @@ class MyTaskService : HeadlessJsTaskService() {
         handler.postDelayed(saveRunnable, getDelayToNextMinute())
     }
 
+
     private fun handleLocationUpdate(location: Location) {
         val lat = location.latitude
         val lng = location.longitude
@@ -148,7 +150,7 @@ class MyTaskService : HeadlessJsTaskService() {
 
         val distance = getDistance(previousLat!!, previousLng!!, lat, lng)
 
-        if (distance in 0.1..maxDistanceCanCover.toDouble()) {
+        if (distance > 0 && distance < maxDistanceCanCover) {
             if (traversalHistory.isNotEmpty() && traversalHistory.last() != '~') {
                 traversalHistory.append("~")
             }
@@ -156,12 +158,21 @@ class MyTaskService : HeadlessJsTaskService() {
             minuteDistance += distance
             updateLocation(lat, lng)
             sendAvatarLocationToWebView(lat, lng)
-        } else if (distance > maxDistanceCanCover) {
+
+        } else if (distance != 0.0 && distance <= 100) {
+            if (traversalHistory.isNotEmpty() && traversalHistory.last() != '~') {
+                traversalHistory.append("~")
+            }
+            traversalHistory.append("($lat,$lng)")
+            minuteDistance += distance
+            updateLocation(lat, lng)
+            sendAvatarLocationToWebView(lat, lng)
+            maxDistanceCanCover = maxDistance * 2
+
+        } else if (distance > 100) {
             maxDistanceCanCover += maxDistance
-            Log.d("LocationUpdate", "Distance too large: $distance, increasing max to $maxDistanceCanCover")
         }
     }
-
     private fun updateLocation(lat: Double, lng: Double) {
         previousLat = lat
         previousLng = lng
@@ -461,11 +472,12 @@ class MyTaskService : HeadlessJsTaskService() {
     }
 
     private fun getDistance(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
-        val r = 6371000.0
+        val earthRadius = 6371000.0
         val dLat = Math.toRadians(lat2 - lat1)
         val dLon = Math.toRadians(lon2 - lon1)
         val a = sin(dLat / 2).pow(2.0) + cos(Math.toRadians(lat1)) * cos(Math.toRadians(lat2)) * sin(dLon / 2).pow(2.0)
-        return 2 * r * atan2(sqrt(a), sqrt(1 - a))
+        val c = 2 * atan2(sqrt(a), sqrt(1 - a))
+        return earthRadius * c
     }
 
     private val setServiceRunning: (Boolean) -> Unit = { isRunning ->
@@ -488,23 +500,21 @@ class MyTaskService : HeadlessJsTaskService() {
             val channel = NotificationChannel(
                 channelId,
                 "Background Service",
-                NotificationManager.IMPORTANCE_LOW
+                NotificationManager.IMPORTANCE_DEFAULT
             ).apply {
+                enableVibration(true)
                 setShowBadge(false)
-                enableLights(false)
-                enableVibration(false)
-                description = "Location tracking service"
+                setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION), Notification.AUDIO_ATTRIBUTES_DEFAULT)
             }
 
             val manager = getSystemService(NotificationManager::class.java)
             manager?.createNotificationChannel(channel)
         }
 
-        val notification = NotificationCompat.Builder(this, channelId)
+        val notification = Notification.Builder(this, channelId)
             .setContentTitle("WeVOIS Payment App")
             .setContentText("Background service is running")
             .setOngoing(true)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .build()
 
