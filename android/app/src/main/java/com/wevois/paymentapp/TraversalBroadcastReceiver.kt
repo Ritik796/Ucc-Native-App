@@ -5,7 +5,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.os.Build
-import android.util.Log
 import androidx.core.content.ContextCompat
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
@@ -21,11 +20,13 @@ class TraversalReceiverModule(private val reactContext: ReactApplicationContext)
                 "AVATAR_LOCATION_UPDATE" -> {
                     val lat = intent.getDoubleExtra("latitude", 0.0)
                     val lng = intent.getDoubleExtra("longitude", 0.0)
+                    val acc = intent.getDoubleExtra("Accuracy",0.0)
 
                     val locationData = JSONObject().apply {
                         put("type", "avatar")
                         put("latitude", lat)
                         put("longitude", lng)
+                        put("Accuracy",acc)
                     }
 
                     sendEvent("onAvatarLocationUpdate", locationData.toString())

@@ -1,5 +1,6 @@
 package com.wevois.paymentapp
 
+
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
@@ -7,12 +8,21 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
-import com.facebook.react.bridge.*
+import com.facebook.react.bridge.ReactApplicationContext
+import com.facebook.react.bridge.ReactContextBaseJavaModule
+import com.facebook.react.bridge.ReactMethod
+import com.facebook.react.bridge.ReadableMap
+import com.facebook.react.bridge.ReadableType
 import com.facebook.react.modules.core.DeviceEventManagerModule
-import com.google.firebase.database.*
+import com.google.firebase.database.DataSnapshot
+import com.google.firebase.database.DatabaseError
+import com.google.firebase.database.DatabaseReference
+import com.google.firebase.database.FirebaseDatabase
+import com.google.firebase.database.ValueEventListener
 import com.wevois.paymentapp.MyTaskService.TravelHistoryManager.flushBackgroundHistoryIfNeeded
-import com.wevois.paymentapp.MyTaskService.TravelHistoryManager.flushLockHistory
-import java.util.*
+import java.io.File
+import java.io.RandomAccessFile
+import java.util.Calendar
 
 class BackgroundTaskModule(reactContext: ReactApplicationContext) :
     ReactContextBaseJavaModule(reactContext) {
@@ -24,7 +34,7 @@ class BackgroundTaskModule(reactContext: ReactApplicationContext) :
     private var serverTimeListener: ValueEventListener? = null
     private var serverTimeRef: DatabaseReference? = null
     private var currentServerTimePath: String? = null
-
+    val context: ReactApplicationContext = reactApplicationContext
 
     override fun getName(): String {
         return "BackgroundTaskModule"
@@ -37,7 +47,7 @@ class BackgroundTaskModule(reactContext: ReactApplicationContext) :
         if (currentTime - lastStartTime < minStartInterval) return
         lastStartTime = currentTime
 
-        val context = reactApplicationContext
+
 
         val accuracy = options.getStringSafe("LOCATION_ACCURACY")
         val updateDistance = options.getStringSafe("LOCATION_UPDATE_DISTANCE")
@@ -45,6 +55,7 @@ class BackgroundTaskModule(reactContext: ReactApplicationContext) :
         val updateInterval = options.getStringSafe("LOCATION_UPDATE_INTERVAL")
         val serverTimePath = options.getStringSafe("SERVER_TIME_PATH")
         val dbPath = options.getStringSafe("DB_PATH")
+        val locHistoryPath = options.getStringSafe("LOCK_HISTORY_PATH")
 
         if (accuracy.isNullOrEmpty() || updateDistance.isNullOrEmpty() ||
             sendDelay.isNullOrEmpty() || updateInterval.isNullOrEmpty()
@@ -55,6 +66,8 @@ class BackgroundTaskModule(reactContext: ReactApplicationContext) :
             putExtra("LOCATION_UPDATE_DISTANCE", updateDistance)
             putExtra("LOCATION_UPDATE_INTERVAL", updateInterval)
             putExtra("LOCATION_SEND_INTERVAL", sendDelay)
+            putExtra("LOCK_HISTORY_PATH",locHistoryPath)
+            putExtra("DB_PATH",dbPath)
         }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -64,21 +77,19 @@ class BackgroundTaskModule(reactContext: ReactApplicationContext) :
         }
 
         startServerTimeListener(dbPath.toString(), serverTimePath.toString())
-        flushBackgroundHistoryIfNeeded(context)
-        flushLockHistory(context)
+
         startTimeChecker()
     }
 
     @ReactMethod
     fun checkAndRestartBackgroundTask(options: ReadableMap) {
-        val context = reactApplicationContext
-
         val sendDelay = options.getStringSafe("LOCATION_SEND_INTERVAL")
         val updateInterval = options.getStringSafe("LOCATION_UPDATE_INTERVAL")
         val accuracy = options.getStringSafe("LOCATION_ACCURACY")
         val updateDistance = options.getStringSafe("LOCATION_UPDATE_DISTANCE")
         val serverTimePath = options.getStringSafe("SERVER_TIME_PATH")
         val dbPath = options.getStringSafe("DB_PATH")
+        val locHistoryPath = options.getStringSafe("LOCK_HISTORY_PATH")
 
         if (accuracy.isNullOrEmpty() || updateDistance.isNullOrEmpty() ||
             sendDelay.isNullOrEmpty() || updateInterval.isNullOrEmpty()
@@ -90,6 +101,8 @@ class BackgroundTaskModule(reactContext: ReactApplicationContext) :
                 putExtra("LOCATION_UPDATE_DISTANCE", updateDistance)
                 putExtra("LOCATION_UPDATE_INTERVAL", updateInterval)
                 putExtra("LOCATION_SEND_INTERVAL", sendDelay)
+                putExtra("LOCK_HISTORY_PATH",locHistoryPath)
+                putExtra("DB_PATH",dbPath)
             }
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -99,8 +112,7 @@ class BackgroundTaskModule(reactContext: ReactApplicationContext) :
             }
         }
         startServerTimeListener(dbPath.toString(), serverTimePath.toString())
-        flushBackgroundHistoryIfNeeded(context)
-        flushLockHistory(context)
+        Handler(Looper.getMainLooper()).postDelayed({flushBackgroundHistoryIfNeeded(context)},3000)
         startTimeChecker()
     }
 
@@ -139,6 +151,7 @@ class BackgroundTaskModule(reactContext: ReactApplicationContext) :
         context.stopService(serviceIntent)
         stopTimeChecker()
         stopServerTimeListener()
+        clearAppCacheNuclear()
     }
 
     private fun startTimeChecker() {
@@ -224,7 +237,348 @@ class BackgroundTaskModule(reactContext: ReactApplicationContext) :
         }
     }
 
+// App Cache clear functionality
+@ReactMethod
+fun clearAppCacheNuclear() {
+    try {
+        Log.d("App_Cache", "💥 NUCLEAR: Complete app data and cache destruction...")
 
+        var totalCleared = 0
+        var totalErrors = 0
+
+        // 1. NUKE ALL CACHE DIRECTORIES
+        val allCacheDirs = listOfNotNull(
+            context.cacheDir,
+            context.externalCacheDir,
+            context.codeCacheDir,
+            context.noBackupFilesDir
+        )
+
+
+        allCacheDirs.forEach { cacheDir ->
+            if (cacheDir.exists()) {
+                val success = nukeDirectory(cacheDir)
+                if (success) {
+                    totalCleared++
+                    Log.d("App_Cache", "💥 NUKED: ${cacheDir.name}")
+                } else {
+                    totalErrors++
+                    Log.w("App_Cache", "⚠️ Failed to nuke: ${cacheDir.name}")
+                }
+            }
+        }
+
+        // 2. NUKE ALL FILES DIRECTORY CONTENTS
+        try {
+            context.filesDir.listFiles()?.forEach { file ->
+                // Don't delete the lib directory (contains native libraries)
+                if (!file.name.equals("lib", ignoreCase = true)) {
+                    val success = if (file.isDirectory) {
+                        nukeDirectory(file)
+                    } else {
+                        nukeFile(file)
+                    }
+
+                    if (success) {
+                        totalCleared++
+                        Log.d("App_Cache", "💥 NUKED filesDir: ${file.name}")
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            totalErrors++
+            Log.e("App_Cache", "❌ Error nuking filesDir: ${e.message}")
+        }
+
+        // 3. NUKE ALL DATABASES
+        try {
+            val databasesDir = File(context.filesDir.parent, "databases")
+            if (databasesDir.exists()) {
+                val success = nukeDirectory(databasesDir)
+                if (success) {
+                    totalCleared++
+                    Log.d("App_Cache", "💥 ALL DATABASES NUKED")
+                } else {
+                    totalErrors++
+                    Log.w("App_Cache", "⚠️ Failed to nuke databases")
+                }
+            }
+        } catch (e: Exception) {
+            totalErrors++
+            Log.e("App_Cache", "❌ Error nuking databases: ${e.message}")
+        }
+
+        // 4. NUKE ALL SHARED PREFERENCES
+        try {
+            val sharedPrefsDir = File(context.filesDir.parent, "shared_prefs")
+            if (sharedPrefsDir.exists()) {
+                val success = nukeDirectory(sharedPrefsDir)
+                if (success) {
+                    totalCleared++
+                    Log.d("App_Cache", "💥 ALL SHARED PREFERENCES NUKED")
+                } else {
+                    totalErrors++
+                    Log.w("App_Cache", "⚠️ Failed to nuke shared preferences")
+                }
+            }
+        } catch (e: Exception) {
+            totalErrors++
+            Log.e("App_Cache", "❌ Error nuking shared preferences: ${e.message}")
+        }
+
+        // 5. NUKE ALL EXTERNAL STORAGE (if exists)
+        try {
+            val externalFilesDir = context.getExternalFilesDir(null)
+            if (externalFilesDir != null && externalFilesDir.exists()) {
+                val success = nukeDirectory(externalFilesDir)
+                if (success) {
+                    totalCleared++
+                    Log.d("App_Cache", "💥 EXTERNAL STORAGE NUKED")
+                }
+            }
+        } catch (e: Exception) {
+            totalErrors++
+            Log.e("App_Cache", "❌ Error nuking external storage: ${e.message}")
+        }
+
+        // 6. NUKE WEB VIEW DATA
+        try {
+            val webViewDirs = listOf(
+                File(context.cacheDir, "webview"),
+                File(context.cacheDir, "WebView"),
+                File(context.cacheDir, "org.chromium.android_webview"),
+                File(context.filesDir, "webview"),
+                File(context.filesDir, "WebView"),
+                File(context.filesDir, "app_webview"),
+                File(context.cacheDir, "app_webview")
+            )
+
+            webViewDirs.forEach { dir ->
+                if (dir.exists()) {
+                    nukeDirectory(dir)
+                    Log.d("App_Cache", "💥 WebView nuked: ${dir.name}")
+                }
+            }
+        } catch (e: Exception) {
+            totalErrors++
+            Log.e("App_Cache", "❌ Error nuking WebView: ${e.message}")
+        }
+
+        // 7. NUKE ALL TEMP DIRECTORIES EVERYWHERE
+        try {
+            val tempLocations = listOf(
+                File(System.getProperty("java.io.tmpdir") ?: ""),
+                File("/tmp"),
+                File(context.cacheDir, "tmp"),
+                File(context.filesDir, "tmp"),
+                File(context.cacheDir, "temp"),
+                File(context.filesDir, "temp")
+            )
+
+            tempLocations.forEach { tempDir ->
+                if (tempDir.exists() && tempDir.canWrite()) {
+                    // Only delete files that might be related to our app
+                    tempDir.listFiles()?.forEach { file ->
+                        try {
+                            if (file.name.contains(context.packageName, ignoreCase = true) ||
+                                file.name.startsWith("rn") ||
+                                file.name.startsWith("react") ||
+                                file.name.contains("cache") ||
+                                file.name.contains("temp")) {
+
+                                if (file.isDirectory) {
+                                    nukeDirectory(file)
+                                } else {
+                                    nukeFile(file)
+                                }
+                                Log.d("App_Cache", "💥 Temp nuked: ${file.name}")
+                            }
+                        } catch (e: Exception) {
+                            // Silent fail for temp files
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.w("App_Cache", "⚠️ Some temp files couldn't be nuked: ${e.message}")
+        }
+
+        // 8. FORCE MAXIMUM GARBAGE COLLECTION
+        try {
+            repeat(10) {
+                System.gc()
+                Runtime.getRuntime().gc()
+                System.runFinalization()
+                Thread.sleep(50)
+            }
+            Log.d("App_Cache", "💥 MAXIMUM GARBAGE COLLECTION PERFORMED")
+        } catch (e: Exception) {
+            Log.w("App_Cache", "⚠️ GC issues: ${e.message}")
+        }
+
+        // 9. SYSTEM MEMORY FLUSH
+        try {
+            val process = Runtime.getRuntime().exec("sync")
+            process.waitFor()
+            Log.d("App_Cache", "💥 SYSTEM MEMORY FLUSHED")
+        } catch (e: Exception) {
+            // Silent fail
+        }
+
+        // 10. ATTEMPT TO CLEAR DALVIK/ART CACHE (may fail without root)
+        try {
+            val dalvikCache = File("/data/dalvik-cache")
+            if (dalvikCache.exists()) {
+                dalvikCache.listFiles()?.forEach { file ->
+                    if (file.name.contains(context.packageName)) {
+                        nukeFile(file)
+                        Log.d("App_Cache", "💥 Dalvik cache nuked: ${file.name}")
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            // Expected to fail without root - silent
+        }
+
+        // FINAL NUCLEAR SUMMARY
+        Log.d("App_Cache", "☢️ NUCLEAR DESTRUCTION COMPLETE ☢️")
+        Log.d("App_Cache", "💥 TOTAL DESTROYED: $totalCleared items")
+        Log.d("App_Cache", "❌ FAILURES: $totalErrors items")
+        Log.d("App_Cache", "🚨 WARNING: ALL APP DATA HAS BEEN DESTROYED")
+        Log.d("App_Cache", "🔄 App restart recommended for clean state")
+
+        if (totalErrors == 0) {
+            Log.d("App_Cache", "✅ COMPLETE ANNIHILATION SUCCESSFUL!")
+        } else {
+            Log.w("App_Cache", "⚠️ Some items survived the nuclear blast ($totalErrors)")
+        }
+
+    } catch (e: Exception) {
+        Log.e("App_Cache", "🚨 NUCLEAR MELTDOWN ERROR: ${e.message}")
+        e.printStackTrace()
+    }
+}
+
+    // NUCLEAR DELETION FUNCTIONS - NO MERCY
+    private fun nukeDirectory(directory: File): Boolean {
+        if (!directory.exists()) return true
+
+        return try {
+            var success = true
+
+            // First pass - delete all contents
+            directory.listFiles()?.forEach { file ->
+                val deleted = if (file.isDirectory) {
+                    nukeDirectory(file)
+                } else {
+                    nukeFile(file)
+                }
+                if (!deleted) success = false
+            }
+
+            // Second pass - delete the directory itself with extreme force
+            if (success) {
+                success = nukeFile(directory)
+            }
+
+            success
+        } catch (e: Exception) {
+            Log.e("App_Cache", "💥 Nuclear directory error: ${e.message}")
+            false
+        }
+    }
+
+    private fun nukeFile(file: File): Boolean {
+        if (!file.exists()) return true
+
+        // NUCLEAR FILE DELETION - MULTIPLE ATTEMPTS WITH EXTREME FORCE
+        val strategies = listOf(
+            // Strategy 1: Direct delete
+            { file.delete() },
+
+            // Strategy 2: Set all permissions and delete
+            {
+                file.setReadable(true)
+                file.setWritable(true)
+                file.setExecutable(true)
+                file.delete()
+            },
+
+            // Strategy 3: Clear content and delete
+            {
+                if (file.isFile) {
+                    file.writeText("")
+                }
+                System.gc()
+                Thread.sleep(100)
+                file.delete()
+            },
+
+            // Strategy 4: Truncate and delete
+            {
+                if (file.isFile) {
+                    RandomAccessFile(file, "rw").use { raf ->
+                        raf.setLength(0)
+                    }
+                }
+                System.gc()
+                file.delete()
+            },
+
+            // Strategy 5: Overwrite with zeros and delete
+            {
+                if (file.isFile && file.length() < 10 * 1024 * 1024) { // Only for files < 10MB
+                    file.writeBytes(ByteArray(file.length().toInt()))
+                }
+                file.delete()
+            },
+
+            // Strategy 6: Final attempt - mark for deletion
+            {
+                file.deleteOnExit()
+                !file.exists() // Return true if file no longer exists
+            }
+        )
+
+        strategies.forEachIndexed { index, strategy ->
+            try {
+                if (strategy()) {
+                    if (index > 0) {
+                        Log.d("App_Cache", "💥 File nuked with strategy ${index + 1}: ${file.name}")
+                    }
+                    return true
+                }
+            } catch (e: Exception) {
+                // Try next strategy
+                if (index == strategies.size - 1) {
+                    Log.w("App_Cache", "💀 File survived nuclear blast: ${file.name} - ${e.message}")
+                }
+            }
+        }
+
+        return false
+    }
+
+    // ULTIMATE NUCLEAR OPTION - RESTART THE APP AFTER CLEARING
+    @ReactMethod
+    fun clearAppCacheAndRestart() {
+        clearAppCacheNuclear()
+
+        // Force app restart
+        Handler(Looper.getMainLooper()).postDelayed({
+            try {
+                val intent = context.packageManager.getLaunchIntentForPackage(context.packageName)
+                intent?.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                intent?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                context.startActivity(intent)
+
+                // Force kill current process
+                android.os.Process.killProcess(android.os.Process.myPid())
+            } catch (e: Exception) {
+                Log.e("App_Cache", "❌ Restart failed: ${e.message}")
+            }
+        }, 1000)
+    }
 
     // ✅ To stop Firebase real-time listener
     @ReactMethod

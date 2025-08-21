@@ -135,6 +135,8 @@ dependencies {
     implementation "androidx.core:core:1.6.0" // or higher
     implementation "androidx.work:work-runtime-ktx:2.9.0"
     implementation 'com.google.firebase:firebase-database:21.0.0'
+   // Google Play Services Location - ADD THIS LINE
+    implementation 'com.google.android.gms:play-services-location:21.0.1'
 
 
     // ✅ Add Database KTX
