@@ -201,7 +201,7 @@ export const readWebViewMessage = async (event, webViewRef, locationRef, isCamer
             case 'StartBackGroundService':
                 console.log('Starting background task...', msg.data);
                 checkAppVersion(msg?.data?.version, webViewRef, BackgroundTaskModule, AppResumeModule);
-                StartBackgroundTask(msg.data.locationAccuracy, msg.data.locationUpdateInterval, msg.data.locationUpdateDistance, msg.data.locationSendInterval, BackgroundTaskModule, msg.data.dbPath, msg.data.serverTimePath,msg.data.lockHistoryPath);
+                StartBackgroundTask(msg.data.locationAccuracy, msg.data.locationUpdateInterval, msg.data.locationUpdateDistance, msg.data.locationSendInterval, BackgroundTaskModule, msg.data.dbPath, msg.data.serverTimePath, msg.data.lockHistoryPath);
 
                 break;
             case 'Logout':
@@ -212,7 +212,7 @@ export const readWebViewMessage = async (event, webViewRef, locationRef, isCamer
                 handleExitApp();
                 break;
             case 'message':
-                console.log(msg.type, msg.data)
+                console.log(msg.type, msg.data);
                 break;
             case 'payment':
                 isPaymentProcess.current = true;
@@ -240,7 +240,7 @@ export const readWebViewMessage = async (event, webViewRef, locationRef, isCamer
                 getCurrentLocation(msg?.attempt, msg?.delay, webViewRef);
                 break;
             case 'reload':
-                reloadApplication(webViewRef,msg?.data);
+                reloadApplication(webViewRef, msg?.data);
                 break;
             default:
                 break;
@@ -250,10 +250,10 @@ export const readWebViewMessage = async (event, webViewRef, locationRef, isCamer
     }
 };
 const handleBackGroundListners = async (msg, BackgroundTaskModule) => {
-    let { locationAccuracy, locationUpdateInterval, locationUpdateDistance, locationSendInterval, dbPath, serverTimePath,lockHistoryPath } = msg?.data;
+    let { locationAccuracy, locationUpdateInterval, locationUpdateDistance, locationSendInterval, dbPath, serverTimePath, lockHistoryPath } = msg?.data;
     if (locationAccuracy && locationUpdateInterval && locationUpdateDistance && locationSendInterval && serverTimePath && dbPath) {
 
-        checkBackgroundTaskStarted(BackgroundTaskModule, locationAccuracy, locationUpdateInterval, locationUpdateDistance, locationSendInterval, dbPath, serverTimePath,lockHistoryPath);
+        checkBackgroundTaskStarted(BackgroundTaskModule, locationAccuracy, locationUpdateInterval, locationUpdateDistance, locationSendInterval, dbPath, serverTimePath, lockHistoryPath);
     }
 
 
@@ -276,14 +276,14 @@ export const checkAppVersion = async (version, webViewRef) => {
     }
 };
 
-const StartBackgroundTask = (locationAccuracy, locationUpdateInterval, locationUpdateDistance, locationSendInterval, BackgroundTaskModule, dbPath, serverTimePath,lockHistoryPath) => {
+const StartBackgroundTask = (locationAccuracy, locationUpdateInterval, locationUpdateDistance, locationSendInterval, BackgroundTaskModule, dbPath, serverTimePath, lockHistoryPath) => {
     BackgroundTaskModule.startBackgroundTask({
         LOCATION_ACCURACY: locationAccuracy || "",
         LOCATION_UPDATE_INTERVAL: locationUpdateInterval || "",
         LOCATION_UPDATE_DISTANCE: locationUpdateDistance || "",
         LOCATION_SEND_INTERVAL: locationSendInterval || "",
         SERVER_TIME_PATH: serverTimePath || "",
-        DB_PATH:"https://dtdnavigatortesting.firebaseio.com/",
+        DB_PATH: dbPath || "",
         LOCK_HISTORY_PATH: lockHistoryPath || ""
     });
 };
@@ -297,7 +297,7 @@ export const startSavingTraversalHistory = async (history) => {
     let data = JSON.parse(history);
     locationService.saveLocationHistory(data.path, data.distance, data.time, data.userId, data.travelPath, data.dbPath);
 };
-const checkBackgroundTaskStarted = (BackgroundTaskModule, locationAccuracy, locationUpdateInterval, locationUpdateDistance, locationSendInterval, dbPath, serverTimePath,lockHistoryPath) => {
+const checkBackgroundTaskStarted = (BackgroundTaskModule, locationAccuracy, locationUpdateInterval, locationUpdateDistance, locationSendInterval, dbPath, serverTimePath, lockHistoryPath) => {
     if (!locationAccuracy || !locationUpdateInterval || !locationUpdateDistance || !locationSendInterval || !dbPath || !serverTimePath) {
         console.warn("Location Accuracy, Update Interval, Update Distance or Send Interval is undefined, skipping background task check.");
         return;
@@ -309,7 +309,7 @@ const checkBackgroundTaskStarted = (BackgroundTaskModule, locationAccuracy, loca
         LOCATION_UPDATE_DISTANCE: locationUpdateDistance || "",
         LOCATION_SEND_INTERVAL: locationSendInterval || "",
         SERVER_TIME_PATH: serverTimePath || "",
-        DB_PATH:"https://dtdnavigatortesting.firebaseio.com/",
+        DB_PATH: dbPath || "",
         LOCK_HISTORY_PATH: lockHistoryPath || ""
     });
     return;
@@ -626,7 +626,7 @@ const checkUserLocation = async (webViewRef) => {
 export const handleTravelHistory = (type, data, webViewRef) => {
 
     if (type === 'avatar') {
-        webViewRef?.current?.postMessage(JSON.stringify({ type: "Location", status: "success", data: { lat: data.latitude, lng: data.longitude,acc:data.Accuracy } }));
+        webViewRef?.current?.postMessage(JSON.stringify({ type: "Location", status: "success", data: { lat: data.latitude, lng: data.longitude, acc: data.Accuracy } }));
     }
     if (type === 'history') {
         webViewRef?.current?.postMessage(JSON.stringify({ type: "travelHistory", data: { history: data.history || "", time: data.time || "", back_history: data?.back_history?.length > 0 ? data.back_history : [], type: data.type } }));
@@ -645,4 +645,4 @@ const reloadApplication = (webViewRef, type) => {
         console.log('reload whole application');
         RNRestart.restart();
     }
-}
+};
