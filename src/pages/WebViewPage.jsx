@@ -148,6 +148,7 @@ const WebViewPage = () => {
         action.stopTracking(locationRef);
         stopConnectivityListener();
         setNetWorkError(false);
+
       }
 
       appState.current = nextAppState;
@@ -171,6 +172,7 @@ const WebViewPage = () => {
   const startConnectivityListener = () => {
     ConnectivityModule.startMonitoring();
     AppResumeModule?.initLifecycleTracking?.();
+  
     // ConnectivityModule.openAutoStartSettings()
   };
   const stopConnectivityListener = () => {
@@ -231,7 +233,7 @@ const WebViewPage = () => {
             key={webKey}
             ref={webViewRef}
             onMessage={handleMessage}
-            source={{ uri: 'https://ucc-payment-app.web.app' }}
+            source={{ uri: 'https://fir-project-d59e1.web.app' }}
             style={{ flex: 1, minHeight: '100%' }} // ✅ Ensure full height
             geolocationEnabled={true}
             mediaPlaybackRequiresUserAction={false}
