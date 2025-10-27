@@ -32,7 +32,7 @@ const WebViewPage = () => {
   const webViewRef = useRef(null);
   const locationRef = useRef(null);
   const isCameraActive = useRef(null);
-  const { BackgroundTaskModule, ConnectivityModule,AppResumeModule } = NativeModules;
+  const { BackgroundTaskModule, ConnectivityModule, AppResumeModule } = NativeModules;
   // Bluetooth States
   const [bluetoothEvent, setBluetoothEvent] = useState(null);
   const [btConnectionRequest, setBtConnectionRequest] = useState(null);
@@ -40,7 +40,7 @@ const WebViewPage = () => {
   const blutoothRef = useRef(false);
   const isDialogVisible = useRef(false);
   const isPaymentProcess = useRef(false);
-  const refContext = useRef({ traversalUpdate: null, networkStatus: null, locationStatus: null, appStatus: null,serverTime:null });
+  const refContext = useRef({ traversalUpdate: null, networkStatus: null, locationStatus: null, appStatus: null, serverTime: null });
   const [status, setStatus] = useState({ networkStatus: false, locationStatus: false });
 
   useEffect(() => {
@@ -92,11 +92,11 @@ const WebViewPage = () => {
       'onLockHistoryUpdate',
       lockHistory => {
         const data = JSON.parse(lockHistory);
-        action.handleSaveLockHistory( data, webViewRef);
+        action.handleSaveLockHistory(data, webViewRef);
 
       }
     );
-   
+
 
     return () => {
       travelSub?.remove();
@@ -172,12 +172,12 @@ const WebViewPage = () => {
   const startConnectivityListener = () => {
     ConnectivityModule.startMonitoring();
     AppResumeModule?.initLifecycleTracking?.();
-  
+
     // ConnectivityModule.openAutoStartSettings()
   };
   const stopConnectivityListener = () => {
     ConnectivityModule.stopMonitoring();
-    
+
   };
 
   const handleRetry = () => {
@@ -199,7 +199,7 @@ const WebViewPage = () => {
       BackgroundTaskModule,
       blutoothRef,
       isPaymentProcess,
-       AppResumeModule
+      AppResumeModule
     );
   };
   return (
@@ -233,7 +233,7 @@ const WebViewPage = () => {
             key={webKey}
             ref={webViewRef}
             onMessage={handleMessage}
-            source={{ uri: 'https://fir-project-d59e1.web.app' }}
+            source={{ uri: 'https://ucc-payment-app.web.app' }}
             style={{ flex: 1, minHeight: '100%' }} // ✅ Ensure full height
             geolocationEnabled={true}
             mediaPlaybackRequiresUserAction={false}

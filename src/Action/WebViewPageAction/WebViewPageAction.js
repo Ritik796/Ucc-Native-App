@@ -386,6 +386,7 @@ const sendPaymentRequestToUrl = async (paymentPayload, url, deviceType, webViewR
         });
         let injectedJS;
         if (response.status === 200 && response.data) {
+            let paymentType = 'payment-success';
             let responseData;
             if (deviceType === 'pine') {
                 responseData = { ...response?.data, deviceType: deviceType };
@@ -407,11 +408,37 @@ const sendPaymentRequestToUrl = async (paymentPayload, url, deviceType, webViewR
                 }
 
             }
-            // console.log(responseData)
+            else if (deviceType === 'paytm') {
+                const head = response?.data?.head || {};
+                const body = response?.data?.body || {};
+                let bodyContent = { ...body };
+                delete bodyContent?.resultInfo;
+                if (body?.resultInfo?.resultCode === 'A') {
+                    responseData = {
+                        ...head, ...bodyContent,
+                        ResponseCode: 0,
+                        ResponseMessage: 'APPROVED',
+                        ResponseStatus: body?.resultInfo?.resultStatus,
+                        ResponseCodeId: body?.resultInfo?.resultCodeId,
+                        deviceType: deviceType
+                    };
+                }
+                else {
+                    paymentType = 'payment-error'
+                    responseData = {
+                        ...head, ...bodyContent,
+                        ResponseCode: body?.resultInfo?.resultCode,
+                        ResponseMessage: body?.resultInfo?.resultMsg || '',
+                        ResponseStatus: body?.resultInfo?.resultStatus,
+                        ResponseCodeId: body?.resultInfo?.resultCodeId,
+                        deviceType: deviceType
+                    };
+                }
+            }
             injectedJS = `
             window.dispatchEvent(new MessageEvent('message', {
                 data: JSON.stringify({
-                    type: 'payment-success',
+                    type: '${paymentType}',
                     status: 'success',
                     data: ${JSON.stringify(responseData)}
                 })
@@ -445,6 +472,8 @@ const sendPaymentRequestToUrl = async (paymentPayload, url, deviceType, webViewR
 const getPaymentStatusFromApi = (webViewRef, url, payloadData, deviceType, checkDelay = 6000, serverTimeout = 120500, maxAttempts = 35, orangeTimeout = 110500) => {
     if (deviceType === 'pine') {
         checkPineTransactionStatus(webViewRef, url, payloadData, checkDelay, maxAttempts);
+    } else if (deviceType === 'paytm') {
+        checkPaytmTransactionStatus(webViewRef, url, payloadData, checkDelay, maxAttempts);
     } else {
         const startTime = Date.now();
         const control = { sent: false }; // ✅ this object is shared by reference
@@ -645,4 +674,112 @@ const reloadApplication = (webViewRef, type) => {
         console.log('reload whole application');
         RNRestart.restart();
     }
+};
+const checkPaytmTransactionStatus = (webViewRef, url, payloadData, checkDelay, maxAttempts) => {
+    let attempt = 1;
+    const interval = setInterval(async () => {
+        try {
+            const response = await axios.post(url, payloadData, {
+                headers: { 'Content-Type': 'application/json' },
+                timeout: 30000 // 30 second timeout
+            });
+
+            const head = response?.data?.head || {};
+            const body = response?.data?.body || {};
+            let bodyContent = { ...body };
+            delete bodyContent?.resultInfo;
+
+            const resultCode = body?.resultInfo?.resultCode;
+            const resultStatus = body?.resultInfo?.resultStatus;
+            const resultMsg = body?.resultInfo?.resultMsg;
+            const resultCodeId = body?.resultInfo?.resultCodeId;
+
+            const responseData = {
+                ...head,
+                ...bodyContent,
+                ResponseCode: resultCode,
+                ResponseMessage: resultMsg || '',
+                ResponseStatus: resultStatus,
+                ResponseCodeId: resultCodeId,
+                deviceType: 'paytm'
+            };
+
+            // Handle Success cases
+            if (resultCodeId === '0000' || resultCodeId === '0009') {
+                responseData['ResponseCode'] = 0;
+                const successJS = `
+                    window.dispatchEvent(new MessageEvent('message', {
+                        data: JSON.stringify({
+                            type: 'paymentStatus-success',
+                            data: ${JSON.stringify(responseData)}
+                        })
+                    }));
+                `;
+                webViewRef.current?.injectJavaScript(successJS);
+                clearInterval(interval);
+                return;
+            }
+            // Handle Pending cases
+            else if (resultCodeId === '0010' || resultCodeId === '0030') {
+                // Continue polling - do nothing here
+                console.log(`Transaction pending. Status: ${resultStatus}, Message: ${resultMsg}`);
+            }
+            // Handle Failure cases
+            else if (['0012', '0330', '0404', '0011', '0090', '0180'].includes(resultCodeId)) {
+                const failJS = `
+                    window.dispatchEvent(new MessageEvent('message', {
+                        data: JSON.stringify({
+                            type: 'paymentStatus-error',
+                            message: ${JSON.stringify(resultMsg)}
+                        })
+                    }));
+                `;
+                webViewRef.current?.injectJavaScript(failJS);
+                clearInterval(interval);
+                return;
+            }
+
+        } catch (error) {
+            const errorMessage = error.code === 'ECONNABORTED'
+                ? 'Request timeout'
+                : error.message === 'Network Error'
+                    ? 'Network connection error'
+                    : error.message;
+
+            const errorJS = `
+                window.dispatchEvent(new MessageEvent('message', {
+                    data: JSON.stringify({
+                        type: 'paymentStatus-catch-error',
+                        message: ${JSON.stringify(errorMessage)}
+                    })
+                }));
+            `;
+            webViewRef.current?.injectJavaScript(errorJS);
+            clearInterval(interval);
+            return;
+        }
+
+        attempt++;
+        if (attempt > maxAttempts) {
+            console.warn('Max payment status attempts reached, stopping polling.');
+            const errorJS = `
+                window.dispatchEvent(new MessageEvent('message', {
+                    data: JSON.stringify({
+                        type: 'paymentStatus-catch-error',
+                        message: 'Transaction Timeout'
+                    })
+                }));
+            `;
+            webViewRef.current?.injectJavaScript(errorJS);
+            clearInterval(interval);
+            return;
+        }
+    }, checkDelay);
+
+    // Return cleanup function
+    return () => {
+        if (interval) {
+            clearInterval(interval);
+        }
+    };
 };
