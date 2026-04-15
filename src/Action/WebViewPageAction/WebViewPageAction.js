@@ -6,7 +6,6 @@ import * as locationService from '../../Services/LocationServices';
 import { getCurrentLocation } from "../../Services/commonFunctions";
 import RNRestart from 'react-native-restart';
 
-
 export const requestLocationPermission = async () => {
     try {
         if (Platform.OS !== 'android') return true;
@@ -216,7 +215,12 @@ export const readWebViewMessage = async (event, webViewRef, locationRef, isCamer
                 break;
             case 'payment':
                 isPaymentProcess.current = true;
-                sendPaymentRequestToUrl(msg?.data?.paymentData, msg?.data?.url, msg?.data?.deviceType, webViewRef);
+                if (msg?.data?.deviceType === 'sbi') {
+                    sendPaymentRequestToSbi(msg?.data?.paymentData, msg?.data?.url, webViewRef, msg?.data?.tokenData)
+                }
+                else {
+                    sendPaymentRequestToUrl(msg?.data?.paymentData, msg?.data?.url, msg?.data?.deviceType, webViewRef);
+                }
                 break;
             case 'Payment_Process_Done':
                 setTimeout(() => {
@@ -224,7 +228,7 @@ export const readWebViewMessage = async (event, webViewRef, locationRef, isCamer
                 }, 2000);
                 break;
             case 'paymentStatus':
-                getPaymentStatusFromApi(webViewRef, msg?.data?.url, msg?.data?.payloadData, msg?.data?.deviceType, msg?.data?.checkDelay, msg?.data?.serverTimeout, msg?.data?.maxAttempts, msg?.data?.orangeTimeout);
+                getPaymentStatusFromApi(webViewRef, msg?.data?.url, msg?.data?.payloadData, msg?.data?.deviceType, msg?.data?.checkDelay, msg?.data?.serverTimeout, msg?.data?.maxAttempts, msg?.data?.orangeTimeout, msg?.data?.tokenData);
                 break;
             case 'check-location':
                 checkUserLocation(webViewRef);
@@ -469,11 +473,13 @@ const sendPaymentRequestToUrl = async (paymentPayload, url, deviceType, webViewR
         webViewRef.current?.injectJavaScript(errorJS);
     }
 };
-const getPaymentStatusFromApi = (webViewRef, url, payloadData, deviceType, checkDelay = 6000, serverTimeout = 120500, maxAttempts = 35, orangeTimeout = 110500) => {
+const getPaymentStatusFromApi = (webViewRef, url, payloadData, deviceType, checkDelay = 6000, serverTimeout = 120500, maxAttempts = 35, orangeTimeout = 110500, tokenData) => {
     if (deviceType === 'pine') {
         checkPineTransactionStatus(webViewRef, url, payloadData, checkDelay, maxAttempts);
     } else if (deviceType === 'paytm') {
         checkPaytmTransactionStatus(webViewRef, url, payloadData, checkDelay, maxAttempts);
+    } else if (deviceType === 'sbi') {
+        checkSbiTransactionStatus(webViewRef, url, payloadData, checkDelay, maxAttempts, tokenData);
     } else {
         const startTime = Date.now();
         const control = { sent: false }; // ✅ this object is shared by reference
@@ -783,3 +789,117 @@ const checkPaytmTransactionStatus = (webViewRef, url, payloadData, checkDelay, m
         }
     };
 };
+const sendPaymentRequestToSbi = async (paymentPayload, url, webViewRef, tokenData) => {
+    try {
+        const tokenResponse = await axios.post(tokenData?.url, tokenData?.data, { headers: { 'Content-Type': 'application/json' }, timeout: 30000 });
+        let injectedJS;
+        let responseData;
+        if (tokenResponse?.status === 200 && tokenResponse?.data?.ResponseCode === '000' && tokenResponse?.data?.APIToken) {
+            const token = tokenResponse?.data?.APIToken;
+            paymentPayload = { ...paymentPayload, "APIToken": token }
+            const paymentResp = await axios.post(url, paymentPayload, { headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, timeout: 30000 });
+            if (paymentResp?.status === 200 && paymentResp?.data?.ResponseCode === "000") {
+                responseData = { ...paymentResp?.data, ResponseCode: 0, ResponseMessage: 'APPROVED' };
+                injectedJS = `window.dispatchEvent(new MessageEvent('message', {data: JSON.stringify({ type: 'payment-success',status: 'success',data: ${JSON.stringify(responseData)}})}));`;
+            } else {
+                responseData = {
+                    ...paymentResp?.data,
+                    ResponseCode: Number(paymentResp?.data?.ResponseCode),
+                    ResponseMessage: paymentResp?.data?.ResponseDescription
+                };
+                injectedJS = `window.dispatchEvent(new MessageEvent('message', {data: JSON.stringify({type: 'payment-error',status: 'fail',data: ${JSON.stringify(responseData)}})}));`;
+            }
+        }
+        else {
+            responseData = {
+                ...tokenResponse?.data,
+                ResponseCode: Number(tokenResponse?.data?.ResponseCode),
+                ResponseMessage: tokenResponse?.data?.ResponseDescription
+            };
+            injectedJS = `window.dispatchEvent(new MessageEvent('message', {data: JSON.stringify({type: 'payment-error',status: 'fail',data: ${JSON.stringify(responseData)}})}));`;
+        }
+        webViewRef.current?.injectJavaScript(injectedJS);
+
+    } catch (error) {
+        console.error(error)
+        const errorJS = `
+            window.dispatchEvent(new MessageEvent('message', {
+                data: JSON.stringify({
+                    type: 'payment-catch-error',
+                    error: ${JSON.stringify(error.message)}
+                })
+            }));
+        `;
+        webViewRef.current?.injectJavaScript(errorJS);
+    }
+};
+const checkSbiTransactionStatus = async (webViewRef, url, payloadData, checkDelay, maxAttempts, tokenData) => {
+    let attempt = 1;
+    let token = await generateSbiApiToken(tokenData);
+    const interval = setInterval(async () => {
+        try {
+            payloadData = { ...payloadData, "APIToken": token }
+            const statusResp = await axios.post(url, payloadData, { headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, timeout: 30000 });
+
+            const responseData = { ...statusResp?.data };
+            const { AuthCode, RRN, TxnStatus } = responseData;
+            // Handle Success cases1
+            if (Number(AuthCode) && Number(RRN) !== 0 && (TxnStatus?.includes('Successful') || TxnStatus?.includes('Approved'))) {
+                responseData['ResponseCode'] = 0;
+                const successJS = `window.dispatchEvent(new MessageEvent('message', {data: JSON.stringify({type: 'paymentStatus-success',data: ${JSON.stringify(responseData)}})}));`;
+
+                webViewRef.current?.injectJavaScript(successJS);
+                clearInterval(interval);
+                return;
+            }
+        } catch (error) {
+            console.error('status error', error?.status)
+            console.error('status error', error)
+            if (error?.status === 401) {
+                token = await generateSbiApiToken(tokenData);
+            }
+            else {
+                const errorMessage = error.code === 'ECONNABORTED' ? 'Request timeout' : error.message === 'Network Error' ? 'Network connection error' : error.message;
+                const errorJS = `window.dispatchEvent(new MessageEvent('message', {data: JSON.stringify({type: 'paymentStatus-catch-error',message: ${JSON.stringify(errorMessage)}})}));`;
+                webViewRef.current?.injectJavaScript(errorJS);
+                clearInterval(interval);
+                return;
+            }
+        }
+        attempt++;
+        if (attempt > maxAttempts) {
+            console.warn('Max payment status attempts reached, stopping polling.');
+            const errorJS = `
+                window.dispatchEvent(new MessageEvent('message', {
+                    data: JSON.stringify({
+                        type: 'paymentStatus-catch-error',
+                        message: 'Transaction Timeout'
+                    })
+                }));
+            `;
+            webViewRef.current?.injectJavaScript(errorJS);
+            clearInterval(interval);
+            return;
+        }
+    }, checkDelay);
+
+    // Return cleanup function
+    return () => {
+        if (interval) {
+            clearInterval(interval);
+        }
+    };
+};
+const generateSbiApiToken = async (tokenData) => {
+    try {
+        const tokenResponse = await axios.post(tokenData?.url, tokenData?.data, { headers: { 'Content-Type': 'application/json' }, timeout: 30000 });
+        if (tokenResponse?.status === 200 && tokenResponse?.data?.ResponseCode === '000' && tokenResponse?.data?.APIToken) {
+            return tokenResponse?.data?.APIToken;
+        }
+        else {
+            return '';
+        }
+    } catch (err) {
+        return '';
+    }
+}
