@@ -150,15 +150,9 @@ class MyTaskService : HeadlessJsTaskService() {
 
 
 
-        // Handle first location
-        if (previousLat == null || previousLng == null) {
-            updateLocation(lat, lng)
-            traversalHistory.append("($lat,$lng)")
-            sendAvatarLocationToWebView(lat, lng, acc.toDouble())
-            saveDataToDatabase(traversalHistory.toString())
-
-            return
-        }
+        // Save unlock history with the first fresh GPS fix after an unlock.
+        // Must run BEFORE the first-location check below, because previousLat
+        // is reset to null on unlock and would otherwise short-circuit here.
         if (isWaitingForUnlockLocation) {
             if (lat == 0.0 || lng == 0.0) return
             val unlockObj = JSONObject().apply {
@@ -167,7 +161,17 @@ class MyTaskService : HeadlessJsTaskService() {
             }
             saveLockUnLockHistory(unlockObj, dbPath, lockHistoryPath)
             isWaitingForUnlockLocation = false
+        }
 
+        // Handle first location (also re-seeds after an unlock/gap so the new
+        // position becomes a fresh start point instead of being discarded).
+        if (previousLat == null || previousLng == null) {
+            updateLocation(lat, lng)
+            traversalHistory.append("($lat,$lng)")
+            sendAvatarLocationToWebView(lat, lng, acc.toDouble())
+            saveDataToDatabase(traversalHistory.toString())
+
+            return
         }
         val distance = getDistance(previousLat!!, previousLng!!, lat, lng) // in meters
 
@@ -190,7 +194,16 @@ class MyTaskService : HeadlessJsTaskService() {
             maxDistanceCanCover = maxDistance * 2
 
         } else if (distance > 100) {
-            maxDistanceCanCover += maxDistance
+            // Sustained real movement (passed the accuracy gate but >100m from
+            // the last point — e.g. moved while locked/backgrounded). Record it
+            // and advance the reference point so location history never freezes.
+            if (traversalHistory.isNotEmpty() && traversalHistory.last() != '~') {
+                traversalHistory.append("~")
+            }
+            traversalHistory.append("($lat,$lng)")
+            updateLocation(lat, lng)
+            sendAvatarLocationToWebView(lat, lng, acc.toDouble())
+            maxDistanceCanCover = maxDistance
         }
 
     }
@@ -434,6 +447,11 @@ class MyTaskService : HeadlessJsTaskService() {
     }
 
     private fun onDeviceUnlocked() {
+        // Reset the reference point: the worker may have moved far while the
+        // screen was locked. Without this the next fix would be >100m from the
+        // stale previousLat and the traversal buffer would freeze.
+        previousLat = null
+        previousLng = null
         // Flag to update unlock entry with next GPS fix
         startTraversalTracking()
         Log.d("LocationUpdate", "Tracking Start")
