@@ -14,6 +14,10 @@ import com.facebook.react.bridge.ReactMethod
 import com.facebook.react.bridge.ReadableMap
 import com.facebook.react.bridge.ReadableType
 import com.facebook.react.modules.core.DeviceEventManagerModule
+import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkManager
+import java.util.concurrent.TimeUnit
 import com.google.firebase.database.DataSnapshot
 import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.DatabaseReference
@@ -56,6 +60,7 @@ class BackgroundTaskModule(reactContext: ReactApplicationContext) :
         val serverTimePath = options.getStringSafe("SERVER_TIME_PATH")
         val dbPath = options.getStringSafe("DB_PATH")
         val locHistoryPath = options.getStringSafe("LOCK_HISTORY_PATH")
+        val travelPath = options.getStringSafe("TRAVEL_PATH")
 
         if (accuracy.isNullOrEmpty() || updateDistance.isNullOrEmpty() ||
             sendDelay.isNullOrEmpty() || updateInterval.isNullOrEmpty()
@@ -68,6 +73,7 @@ class BackgroundTaskModule(reactContext: ReactApplicationContext) :
             putExtra("LOCATION_SEND_INTERVAL", sendDelay)
             putExtra("LOCK_HISTORY_PATH",locHistoryPath)
             putExtra("DB_PATH",dbPath)
+            putExtra("TRAVEL_PATH", travelPath)
         }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -78,6 +84,7 @@ class BackgroundTaskModule(reactContext: ReactApplicationContext) :
 
         startServerTimeListener(dbPath.toString(), serverTimePath.toString())
 
+        scheduleHealthCheck()
         startTimeChecker()
     }
 
@@ -90,6 +97,7 @@ class BackgroundTaskModule(reactContext: ReactApplicationContext) :
         val serverTimePath = options.getStringSafe("SERVER_TIME_PATH")
         val dbPath = options.getStringSafe("DB_PATH")
         val locHistoryPath = options.getStringSafe("LOCK_HISTORY_PATH")
+        val travelPath = options.getStringSafe("TRAVEL_PATH")
 
         if (accuracy.isNullOrEmpty() || updateDistance.isNullOrEmpty() ||
             sendDelay.isNullOrEmpty() || updateInterval.isNullOrEmpty()
@@ -103,6 +111,7 @@ class BackgroundTaskModule(reactContext: ReactApplicationContext) :
                 putExtra("LOCATION_SEND_INTERVAL", sendDelay)
                 putExtra("LOCK_HISTORY_PATH",locHistoryPath)
                 putExtra("DB_PATH",dbPath)
+                putExtra("TRAVEL_PATH", travelPath)
             }
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -113,7 +122,32 @@ class BackgroundTaskModule(reactContext: ReactApplicationContext) :
         }
         startServerTimeListener(dbPath.toString(), serverTimePath.toString())
         Handler(Looper.getMainLooper()).postDelayed({flushBackgroundHistoryIfNeeded(context)},3000)
+        scheduleHealthCheck()
         startTimeChecker()
+    }
+
+    /**
+     * Point 8: WorkManager periodic health-check enqueue karo (har 15 min — WorkManager ka minimum).
+     * KEEP policy: agar pehle se scheduled hai to dobara nahi banata. Ye tabhi kuch karta hai jab
+     * service dead ho par tracking ON honi chahiye (LocationServiceRestartWorker guard sambhalta hai).
+     */
+    private fun scheduleHealthCheck() {
+        val work = PeriodicWorkRequestBuilder<LocationServiceRestartWorker>(15, TimeUnit.MINUTES)
+            .build()
+        WorkManager.getInstance(context).enqueueUniquePeriodicWork(
+            LocationServiceRestartWorker.WORK_NAME,
+            ExistingPeriodicWorkPolicy.KEEP,
+            work
+        )
+        Log.i("LocTrack", "🩺 WorkManager health-check scheduled (har 15 min: service alive check + restart)")
+        // Fast layer: ~2.5 min AlarmManager watchdog (WorkManager ke 15-min gap ko bharta hai).
+        ServiceWatchdogAlarmReceiver.schedule(context)
+    }
+
+    private fun cancelHealthCheck() {
+        WorkManager.getInstance(context).cancelUniqueWork(LocationServiceRestartWorker.WORK_NAME)
+        ServiceWatchdogAlarmReceiver.cancel(context)
+        Log.i("LocTrack", "🩺 WorkManager + AlarmManager health-check cancelled (tracking intentionally band)")
     }
 
     private fun ReadableMap.getStringSafe(key: String): String? {
@@ -144,13 +178,29 @@ class BackgroundTaskModule(reactContext: ReactApplicationContext) :
         return false
     }
 
-    @ReactMethod
-    fun stopBackgroundTask() {
+    /**
+     * Sirf tracking band karo — service + time checker + server listener. Koi cache/data wipe NAHI.
+     * 23:00 auto-stop aur server kill-switch ise use karte hain, kyunki un par poora app data uda
+     * dena galat tha: config + un-flushed background location buffer (service_prefs) bhi udd jaata
+     * tha, jisse START_STICKY recovery tootti thi aur last points kho jaate the.
+     */
+    private fun stopServiceOnly() {
         val context = reactApplicationContext
         val serviceIntent = Intent(context, MyTaskService::class.java)
         context.stopService(serviceIntent)
+        cancelHealthCheck()
         stopTimeChecker()
         stopServerTimeListener()
+        Log.w("LocTrack", "⏹️ stopServiceOnly — tracking band (data safe, koi nuke nahi)")
+    }
+
+    @ReactMethod
+    fun stopBackgroundTask() {
+        // Logout path: tracking band + poora app data wipe (fresh state). Ye deliberate hai —
+        // isliye nuke sirf yahin hota hai, 23:00 / kill-switch par nahi.
+        Log.w("LocTrack", "⛔ stopBackgroundTask() CALLED — service stop + cache nuke (logout). Call stack:\n" +
+                Log.getStackTraceString(Throwable("stopBackgroundTask trace")))
+        stopServiceOnly()
         clearAppCacheNuclear()
     }
 
@@ -162,7 +212,9 @@ class BackgroundTaskModule(reactContext: ReactApplicationContext) :
                 val minute = calendar.get(Calendar.MINUTE)
 
                 if (hour == 23 && minute == 0) {
-                    stopBackgroundTask()
+                    // Raat 11 baje ke baad tracking nahi karni — sirf clean stop, data wipe NAHI.
+                    Log.w("LocTrack", "⛔ 23:00 auto-stop trigger (device time $hour:$minute) — tracking band (data safe)")
+                    stopServiceOnly()
                     stopTimeChecker()
                 }
 
@@ -201,6 +253,10 @@ class BackgroundTaskModule(reactContext: ReactApplicationContext) :
 
         // Avoid constructing full URL, just use FirebaseDatabase.getInstance()
         try {
+            // Firebase offline persistence — ye is DB instance ki PEHLI usage hai (getReference se pehle
+            // enable karna zaroori, warna setPersistenceEnabled throw karta hai). MyTaskService bhi isi
+            // shared helper ko call karti hai; jo pehle chale wahi enable kar dega (process me ek baar).
+            MyTaskService.ensureFirebasePersistence(baseUrl)
             val db = FirebaseDatabase.getInstance(baseUrl)
             serverTimeRef = db.getReference(relativePath)
 
@@ -217,10 +273,11 @@ class BackgroundTaskModule(reactContext: ReactApplicationContext) :
                             .emit("onServerTimeStatus", "false")
                     }
                     else{
+                        Log.w("LocTrack", "⛔ serverTime value NON-EMPTY ($serverTimeValue) → server kill-switch: tracking band (data safe, nuke nahi)")
                         reactApplicationContext
                             .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
                             .emit("onServerTimeStatus", "true")
-                    stopBackgroundTask()
+                    stopServiceOnly()
                     }
                 }
 
