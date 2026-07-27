@@ -41,6 +41,10 @@ class TraversalReceiverModule(private val reactContext: ReactApplicationContext)
                     val data = intent.getStringExtra("lock_history") ?: return
                     sendEvent("onLockHistoryUpdate", data)
                 }
+                "pip_mode_changed" -> {
+                    val inPip = intent.getBooleanExtra("inPip", false)
+                    sendEvent("onPipModeChanged", if (inPip) "true" else "false")
+                }
 
 
                 else -> return
@@ -62,6 +66,7 @@ class TraversalReceiverModule(private val reactContext: ReactApplicationContext)
                 addAction("AVATAR_LOCATION_UPDATE")
                 addAction("travel_history")
                 addAction("lock_history")
+                addAction("pip_mode_changed")
             }
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {

@@ -56,7 +56,9 @@
             android:exported="true"
             android:label="@string/app_name"
             android:launchMode="singleTask"
+            android:resizeableActivity="true"
             android:screenOrientation="portrait"
+            android:supportsPictureInPicture="true"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -65,8 +67,29 @@
         </activity>
 
 
+        <!-- ✅ Boot / app-update ke baad tracking auto-restart (Point 6) -->
+        <receiver
+            android:name=".BootReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- ✅ Fast-recovery AlarmManager watchdog (~2.5 min service-alive check) -->
+        <receiver
+            android:name=".ServiceWatchdogAlarmReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.wevois.paymentapp.SERVICE_WATCHDOG_ALARM" />
+            </intent-filter>
+        </receiver>
+
         <!-- ✅ Your foreground service for location -->
-        
+
               <receiver
                 android:name=".MyReceiver"
                 android:exported="false" />

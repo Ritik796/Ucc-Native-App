@@ -27,6 +27,8 @@ class MainApplication : Application(), ReactApplication {
           add(TraversalReceiverPackage())
           add(ConnectivityPackage())
           add(AppResumePackage())
+          add(BatteryOptimizationPackage())
+          add(PipPackage())
         }
 
       override fun getJSMainModuleName(): String = "index"

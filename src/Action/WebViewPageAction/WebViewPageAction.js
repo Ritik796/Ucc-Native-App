@@ -5,6 +5,58 @@ import DeviceInfo from "react-native-device-info";
 import * as locationService from '../../Services/LocationServices';
 import { getCurrentLocation } from "../../Services/commonFunctions";
 import RNRestart from 'react-native-restart';
+import * as pipAction from '../Pip/pipAction';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+// Background-location ("Allow all the time") ka guidance alert har launch par blocking na ho — ise
+// sirf EK BAAR dikhate hain. Isके baad agar user ne "all the time" na diya ho to bhi chup-chaap ek
+// silent request-attempt karke aage badh jaate hain (app block nahi hoti). Revoke/re-nudge foreground
+// ke recheckLocationPermissions se handle hota hai (jo sirf tracking-desired par nudge karta hai).
+const BG_LOC_PROMPTED_KEY = '@bg_location_prompted';
+
+// User ne location tracking ON karwaya hai ya nahi. GPS off→on / app active / PiP me JS watch ko
+// sahi se resume karne ke liye — taaki band hua watch chup-chaap dobara chaalu ho jaaye, aur logout
+// ke baad galti se na chale.
+let isTrackingDesired = false;
+
+// Ek permission ko GRANTED hone tak ensure karta hai — jab tak grant na ho tab tak nudge karta hai.
+// DENIED par "Retry", permanently-deny (NEVER_ASK_AGAIN) par "Open Settings" guidance. cancelable:false
+// isliye worker skip nahi kar sakta — yahi "make sure sari permission on ho" ka core hai.
+const ensurePermissionGranted = async (permission, title, message) => {
+    try {
+        if (await PermissionsAndroid.check(permission)) return true;
+        while (true) {
+            const result = await PermissionsAndroid.request(permission);
+            if (result === PermissionsAndroid.RESULTS.GRANTED) return true;
+
+            if (result === PermissionsAndroid.RESULTS.NEVER_ASK_AGAIN) {
+                await new Promise((resolve) => {
+                    Alert.alert(
+                        title,
+                        message + '\n\nPermission permanently deny ho gayi hai — Settings se manually ON karein.',
+                        [{ text: 'Open Settings', onPress: async () => { await Linking.openSettings(); resolve(true); } }],
+                        { cancelable: false }
+                    );
+                });
+                // Settings se wapas aaye — agar ab grant hai to done, warna dobara guide.
+                if (await PermissionsAndroid.check(permission)) return true;
+            } else {
+                // DENIED — Retry karwao, phir loop dobara request karega.
+                await new Promise((resolve) => {
+                    Alert.alert(
+                        title,
+                        message,
+                        [{ text: 'Retry', onPress: () => resolve(true) }],
+                        { cancelable: false }
+                    );
+                });
+            }
+        }
+    } catch (e) {
+        console.warn('ensurePermissionGranted error:', e);
+        return false;
+    }
+};
 
 export const requestLocationPermission = async () => {
     try {
@@ -43,74 +95,68 @@ export const requestLocationPermission = async () => {
             isPermission = false;
         }
 
-        // ✅ Step 2: Background location check only on Android 10+ (API 29+)
+        // ✅ Step 1.5: FINE_LOCATION critical hai — background location ("Allow all the time") isi ke
+        // baad hi milti hai. Isliye pehle ise grant hone tak ensure karo, warna neeche wala background
+        // step bekaar chala jaata tha (deny hone par bhi app aage badh jaati thi).
+        await ensurePermissionGranted(
+            PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+            'Location permission zaruri',
+            'Is app ko location tracking ke liye location permission chahiye. Kripya "Allow" karein.'
+        );
+
+        // ✅ Step 1.6: Android 13+ par notification permission — foreground service ki notification
+        // dikhane ke liye. Ye tracking rokti nahi (deny hone par bhi service chalti hai), isliye
+        // best-effort ek baar maang lete hain, hard-block nahi.
+        if (Platform.Version >= 33) {
+            const notifGranted = await PermissionsAndroid.check(
+                PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS
+            );
+            if (!notifGranted) {
+                await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS);
+            }
+        }
+
+        // ✅ Step 2: Background location ("Allow all the time") — sirf Android 10+ (API 29+)
         if (Platform.Version >= 29) {
             const alreadyGranted = await PermissionsAndroid.check(
                 PermissionsAndroid.PERMISSIONS.ACCESS_BACKGROUND_LOCATION
             );
 
             if (alreadyGranted) {
+                // Grant ho gaya — flag reset, taaki aage kabhi revoke ho to phir se ek baar guide kar sakein.
+                await AsyncStorage.removeItem(BG_LOC_PROMPTED_KEY).catch(() => { });
                 return isPermission;
             }
 
-            // Step 3: Show guidance alert once
+            // Pehle hi guide kar chuke? To har launch blocking alert NAHI — chup-chaap ek silent request
+            // try karo (system NEVER_ASK_AGAIN pe bina dialog ke return kar dega) aur aage badh jao.
+            const alreadyPrompted = await AsyncStorage.getItem(BG_LOC_PROMPTED_KEY);
+            if (alreadyPrompted === 'true') {
+                const bgSilent = await PermissionsAndroid.request(
+                    PermissionsAndroid.PERMISSIONS.ACCESS_BACKGROUND_LOCATION
+                );
+                if (bgSilent !== PermissionsAndroid.RESULTS.GRANTED) isPermission = false;
+                return isPermission;
+            }
+
+            // Pehli baar — guidance ek baar dikhao, phir ek baar request. Koi infinite loop nahi.
             await new Promise((resolve) => {
                 Alert.alert(
                     'Background Location Required',
                     'To continue, please allow background location access and select "Allow all the time" on the next screen.',
-                    [
-                        {
-                            text: 'Continue',
-                            onPress: () => resolve(true)
-                        }
-                    ],
+                    [{ text: 'Continue', onPress: () => resolve(true) }],
                     { cancelable: false }
                 );
             });
 
-            // Step 4: Request background location in a loop
-            let loop = true;
-            while (loop) {
-                const bgGranted = await PermissionsAndroid.request(
-                    PermissionsAndroid.PERMISSIONS.ACCESS_BACKGROUND_LOCATION
-                );
+            const bgGranted = await PermissionsAndroid.request(
+                PermissionsAndroid.PERMISSIONS.ACCESS_BACKGROUND_LOCATION
+            );
+            // Flag set — chahe grant ho ya na ho, dobara har launch nag na ho.
+            await AsyncStorage.setItem(BG_LOC_PROMPTED_KEY, 'true').catch(() => { });
 
-                if (bgGranted === PermissionsAndroid.RESULTS.GRANTED) {
-                    loop = false;
-                    return isPermission;
-                } else if (bgGranted === PermissionsAndroid.RESULTS.DENIED) {
-                    await new Promise((resolve) => {
-                        Alert.alert(
-                            'Permission Needed',
-                            'Background location is required to proceed. Please allow it.',
-                            [
-                                {
-                                    text: 'Retry',
-                                    onPress: () => resolve(true)
-                                }
-                            ],
-                            { cancelable: false }
-                        );
-                    });
-                } else if (bgGranted === PermissionsAndroid.RESULTS.NEVER_ASK_AGAIN) {
-                    await new Promise((resolve) => {
-                        Alert.alert(
-                            'Enable Permission',
-                            'Background location permission has been permanently denied. Please enable it from app settings.',
-                            [
-                                {
-                                    text: 'Open Settings',
-                                    onPress: async () => {
-                                        await Linking.openSettings();
-                                        resolve(true);
-                                    }
-                                }
-                            ],
-                            { cancelable: false }
-                        );
-                    });
-                }
-            }
+            if (bgGranted !== PermissionsAndroid.RESULTS.GRANTED) isPermission = false;
+            return isPermission;
         }
 
         return isPermission;
@@ -119,6 +165,42 @@ export const requestLocationPermission = async () => {
         return false;
     }
 };
+
+// App foreground aane par location permissions dobara check karo — agar shift ke beech revoke ho
+// gayi (Android 11+ auto-reset / user ne manually band ki) to turant nudge karo. Sirf tab jab
+// tracking desired ho (worker logged in), warna logout ke baad bhi permission force ho jaati.
+export const recheckLocationPermissions = async () => {
+    if (Platform.OS !== 'android' || !isTrackingDesired) return;
+    try {
+        const fineGranted = await PermissionsAndroid.check(
+            PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION
+        );
+        if (!fineGranted) {
+            console.log('[LocTrack] ⚠️ FINE_LOCATION revoke ho gayi — dobara nudge');
+            await ensurePermissionGranted(
+                PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+                'Location permission zaruri',
+                'Location tracking ke liye location permission chahiye. Kripya "Allow" karein.'
+            );
+        }
+        if (Platform.Version >= 29) {
+            const bgGranted = await PermissionsAndroid.check(
+                PermissionsAndroid.PERMISSIONS.ACCESS_BACKGROUND_LOCATION
+            );
+            if (!bgGranted) {
+                console.log('[LocTrack] ⚠️ BACKGROUND_LOCATION revoke ho gayi — dobara nudge');
+                await ensurePermissionGranted(
+                    PermissionsAndroid.PERMISSIONS.ACCESS_BACKGROUND_LOCATION,
+                    'Background location zaruri',
+                    'Screen off / background me tracking ke liye location ko "Allow all the time" par set karein.'
+                );
+            }
+        }
+    } catch (e) {
+        console.warn('recheckLocationPermissions error:', e);
+    }
+};
+
 export const startLocationTracking = async (locationRef, webViewRef) => {
     try {
         console.log('StartLocationTracking');
@@ -168,12 +250,21 @@ export const stopTracking = async (locationRef) => {
         locationRef.current = null;
     }
 };
+// JS watch ko sirf tab resume karo jab tracking desired ho aur abhi chal nahi raha ho.
+// (GPS off→on, app active, PiP — sab jagah safe resume ke liye.)
+export const resumeTrackingIfDesired = (locationRef, webViewRef) => {
+    if (isTrackingDesired && locationRef?.current == null) {
+        startLocationTracking(locationRef, webViewRef);
+    }
+};
 export const readWebViewMessage = async (event, webViewRef, locationRef, isCameraActive, setShowCamera, setIsVisible, setBluetoothEvent, setBtConnectionRequest, setWebData, BackgroundTaskModule, blutoothRef, isPaymentProcess, AppResumeModule) => {
     let data = event?.nativeEvent?.data;
     try {
         let msg = JSON.parse(data);
         switch (msg?.type) {
             case 'startLocationTracking':
+                console.log('[LocTrack] ▶️ START: web app ne startLocationTracking bheja — JS watch on');
+                isTrackingDesired = true;
                 startLocationTracking(locationRef, webViewRef);
                 // checkBackgroundTaskStarted(BackgroundTaskModule, msg?.data?.userId, msg?.data?.dbPath, msg?.data?.travelPath);
                 break;
@@ -198,12 +289,14 @@ export const readWebViewMessage = async (event, webViewRef, locationRef, isCamer
                 break;
 
             case 'StartBackGroundService':
-                console.log('Starting background task...', msg.data);
+                console.log('[LocTrack] ▶️ START: web app ne background location service start kiya —', JSON.stringify({ acc: msg?.data?.locationAccuracy, interval: msg?.data?.locationUpdateInterval, dist: msg?.data?.locationUpdateDistance, dbPath: msg?.data?.dbPath ? 'ok' : 'EMPTY!' }));
                 checkAppVersion(msg?.data?.version, webViewRef, BackgroundTaskModule, AppResumeModule);
-                StartBackgroundTask(msg.data.locationAccuracy, msg.data.locationUpdateInterval, msg.data.locationUpdateDistance, msg.data.locationSendInterval, BackgroundTaskModule, msg.data.dbPath, msg.data.serverTimePath, msg.data.lockHistoryPath);
+                StartBackgroundTask(msg.data.locationAccuracy, msg.data.locationUpdateInterval, msg.data.locationUpdateDistance, msg.data.locationSendInterval, BackgroundTaskModule, msg.data.dbPath, msg.data.serverTimePath, msg.data.lockHistoryPath, msg.data.travelPath);
 
                 break;
             case 'Logout':
+                console.log('[LocTrack] ⛔ STOP: LOGOUT — background service + JS watch dono band');
+                isTrackingDesired = false;
                 StopBackGroundTask(BackgroundTaskModule, AppResumeModule);
                 stopTracking(locationRef);
                 break;
@@ -254,10 +347,10 @@ export const readWebViewMessage = async (event, webViewRef, locationRef, isCamer
     }
 };
 const handleBackGroundListners = async (msg, BackgroundTaskModule) => {
-    let { locationAccuracy, locationUpdateInterval, locationUpdateDistance, locationSendInterval, dbPath, serverTimePath, lockHistoryPath } = msg?.data;
+    let { locationAccuracy, locationUpdateInterval, locationUpdateDistance, locationSendInterval, dbPath, serverTimePath, lockHistoryPath, travelPath } = msg?.data;
     if (locationAccuracy && locationUpdateInterval && locationUpdateDistance && locationSendInterval && serverTimePath && dbPath) {
 
-        checkBackgroundTaskStarted(BackgroundTaskModule, locationAccuracy, locationUpdateInterval, locationUpdateDistance, locationSendInterval, dbPath, serverTimePath, lockHistoryPath);
+        checkBackgroundTaskStarted(BackgroundTaskModule, locationAccuracy, locationUpdateInterval, locationUpdateDistance, locationSendInterval, dbPath, serverTimePath, lockHistoryPath, travelPath);
     }
 
 
@@ -280,7 +373,7 @@ export const checkAppVersion = async (version, webViewRef) => {
     }
 };
 
-const StartBackgroundTask = (locationAccuracy, locationUpdateInterval, locationUpdateDistance, locationSendInterval, BackgroundTaskModule, dbPath, serverTimePath, lockHistoryPath) => {
+const StartBackgroundTask = (locationAccuracy, locationUpdateInterval, locationUpdateDistance, locationSendInterval, BackgroundTaskModule, dbPath, serverTimePath, lockHistoryPath, travelPath) => {
     BackgroundTaskModule.startBackgroundTask({
         LOCATION_ACCURACY: locationAccuracy || "",
         LOCATION_UPDATE_INTERVAL: locationUpdateInterval || "",
@@ -288,8 +381,12 @@ const StartBackgroundTask = (locationAccuracy, locationUpdateInterval, locationU
         LOCATION_SEND_INTERVAL: locationSendInterval || "",
         SERVER_TIME_PATH: serverTimePath || "",
         DB_PATH: dbPath || "",
-        LOCK_HISTORY_PATH: lockHistoryPath || ""
+        LOCK_HISTORY_PATH: lockHistoryPath || "",
+        TRAVEL_PATH: travelPath || ""
     });
+    // Tracking shuru hone par hi PiP permission guide karo (ek baar) — yahi wo moment hai jab
+    // floating window matter karta hai. Startup par alert-stacking se bachne ke liye yahin rakha hai.
+    pipAction.ensurePipPermission();
 };
 
 
@@ -298,10 +395,14 @@ const StopBackGroundTask = (BackgroundTaskModule, AppResumeModule) => {
     AppResumeModule?.stopLifecycleTracking?.();
 };
 export const startSavingTraversalHistory = async (history) => {
-    let data = JSON.parse(history);
-    locationService.saveLocationHistory(data.path, data.distance, data.time, data.userId, data.travelPath, data.dbPath);
+    try {
+        let data = JSON.parse(history);
+        locationService.saveLocationHistory(data.path, data.distance, data.time, data.userId, data.travelPath, data.dbPath);
+    } catch (e) {
+        console.log('startSavingTraversalHistory error:', e);
+    }
 };
-const checkBackgroundTaskStarted = (BackgroundTaskModule, locationAccuracy, locationUpdateInterval, locationUpdateDistance, locationSendInterval, dbPath, serverTimePath, lockHistoryPath) => {
+const checkBackgroundTaskStarted = (BackgroundTaskModule, locationAccuracy, locationUpdateInterval, locationUpdateDistance, locationSendInterval, dbPath, serverTimePath, lockHistoryPath, travelPath) => {
     if (!locationAccuracy || !locationUpdateInterval || !locationUpdateDistance || !locationSendInterval || !dbPath || !serverTimePath) {
         console.warn("Location Accuracy, Update Interval, Update Distance or Send Interval is undefined, skipping background task check.");
         return;
@@ -314,7 +415,8 @@ const checkBackgroundTaskStarted = (BackgroundTaskModule, locationAccuracy, loca
         LOCATION_SEND_INTERVAL: locationSendInterval || "",
         SERVER_TIME_PATH: serverTimePath || "",
         DB_PATH: dbPath || "",
-        LOCK_HISTORY_PATH: lockHistoryPath || ""
+        LOCK_HISTORY_PATH: lockHistoryPath || "",
+        TRAVEL_PATH: travelPath || ""
     });
     return;
 };
@@ -374,9 +476,13 @@ const sendLocationStatus = (location, webViewRef, locationRef, setStatus) => {
     setStatus((prev) => ({ ...prev, locationStatus: !location?.isLocationOn }));
 
     if (location?.isLocationOn === false) {
+        console.log('[LocTrack] ⛔ BREAK: GPS/Location device pe OFF ho gaya — JS watch stopped');
         stopTracking(locationRef);
     }
-    else if (location?.isLocationOn === true && locationRef?.current !== null) {
+    // GPS wapas ON: stopTracking ne current=null kar diya hota hai, isliye '== null' check sahi hai
+    // (pehle yahan '!== null' tha jis se watch kabhi resume hi nahi hota tha).
+    else if (location?.isLocationOn === true && isTrackingDesired && locationRef?.current == null) {
+        console.log('[LocTrack] ▶️ RESUME: GPS/Location wapas ON — JS watch dobara start');
         startLocationTracking(locationRef, webViewRef);
     }
 };
@@ -669,7 +775,9 @@ export const handleTravelHistory = (type, data, webViewRef) => {
 
 };
 export const handleSaveLockHistory = (data, webViewRef) => {
-    webViewRef?.current?.postMessage(JSON.stringify({ type: "lockHistory", data: { lock_history: data.lock_history.length > 0 ? data.lock_history : [] } }));
+    // Optional-chaining: agar data me lock_history na ho to pehle crash (undefined.length) hota tha.
+    const lockHistory = data?.lock_history?.length > 0 ? data.lock_history : [];
+    webViewRef?.current?.postMessage(JSON.stringify({ type: "lockHistory", data: { lock_history: lockHistory } }));
 };
 
 const reloadApplication = (webViewRef, type) => {
